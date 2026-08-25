@@ -22,11 +22,20 @@ public class BeverageCustomization
         Syrup = syrup;
     }
 
+
+    // ==========================================
+    // GET ADDITIONAL PRICE
+    // ==========================================
+
     public decimal GetAdditionalPrice()
     {
         decimal additionalPrice = 0m;
 
-        // Size pricing
+
+        // ======================================
+        // SIZE
+        // ======================================
+
         if (Size == "Grande")
         {
             additionalPrice += 10m;
@@ -36,7 +45,11 @@ public class BeverageCustomization
             additionalPrice += 20m;
         }
 
-        // Milk pricing
+
+        // ======================================
+        // ALTERNATIVE MILK
+        // ======================================
+
         if (Milk == "Soy Milk" ||
             Milk == "Oat Milk" ||
             Milk == "Almond Milk")
@@ -44,10 +57,19 @@ public class BeverageCustomization
             additionalPrice += 20m;
         }
 
-        // Extra espresso shots
-        additionalPrice += ExtraShots * 30m;
 
-        // Syrup pricing
+        // ======================================
+        // EXTRA ESPRESSO SHOTS
+        // ======================================
+
+        additionalPrice +=
+            ExtraShots * 30m;
+
+
+        // ======================================
+        // SYRUP
+        // ======================================
+
         if (Syrup != "None")
         {
             additionalPrice += 15m;
@@ -56,12 +78,31 @@ public class BeverageCustomization
         return additionalPrice;
     }
 
+
+    // ==========================================
+    // DISPLAY CUSTOMIZATION
+    // ==========================================
+
     public void DisplayCustomization()
     {
-        Console.WriteLine($"Size: {Size}");
-        Console.WriteLine($"Serving: {Serving}");
-        Console.WriteLine($"Milk: {Milk}");
-        Console.WriteLine($"Extra Shots: {ExtraShots}");
-        Console.WriteLine($"Syrup: {Syrup}");
+        Console.WriteLine(
+            $"Size: {Size}"
+        );
+
+        Console.WriteLine(
+            $"Serving: {Serving}"
+        );
+
+        Console.WriteLine(
+            $"Milk: {Milk}"
+        );
+
+        Console.WriteLine(
+            $"Extra Shots: {ExtraShots}"
+        );
+
+        Console.WriteLine(
+            $"Syrup: {Syrup}"
+        );
     }
 }

@@ -25,10 +25,11 @@ public class AdminMenu
             Console.WriteLine("2. Add Product");
             Console.WriteLine("3. Update Product");
             Console.WriteLine("4. Restock Product");
-            Console.WriteLine("5. View Low Stock");
-            Console.WriteLine("6. View Sales Records");
-            Console.WriteLine("7. View Sales Summary");
-            Console.WriteLine("8. Exit");
+            Console.WriteLine("5. Restock Ingredient");
+            Console.WriteLine("6. View Low Stock");
+            Console.WriteLine("7. View Sales Records");
+            Console.WriteLine("8. View Sales Summary");
+            Console.WriteLine("9. Exit");
             Console.WriteLine("=================================");
             Console.Write("Choose an option: ");
 
@@ -53,18 +54,22 @@ public class AdminMenu
                     break;
 
                 case "5":
-                    adminService.ViewLowStock();
+                    adminService.RestockIngredient();
                     break;
 
                 case "6":
-                    adminService.ViewSalesRecords();
+                    adminService.ViewLowStock();
                     break;
 
                 case "7":
-                    adminService.ViewSalesSummary();
+                    adminService.ViewSalesRecords();
                     break;
 
                 case "8":
+                    adminService.ViewSalesSummary();
+                    break;
+
+                case "9":
                     running = false;
                     break;
 
