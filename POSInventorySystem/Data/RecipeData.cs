@@ -65,7 +65,7 @@ public static class RecipeData
 
         Product? caffeLatte =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P001"
+                p => p.ProductId == "P01"
             );
 
         if (caffeLatte != null &&
@@ -78,7 +78,7 @@ public static class RecipeData
             // Milk is handled by customization.
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             Recipes.Add(recipe);
@@ -91,7 +91,7 @@ public static class RecipeData
 
         Product? caramelMacchiato =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P002"
+                p => p.ProductId == "P02"
             );
 
         Ingredient? caramelSauce =
@@ -106,12 +106,12 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             recipe.AddIngredient(
                 caramelSauce,
-                20
+                0.02m
             );
 
             Recipes.Add(recipe);
@@ -124,7 +124,7 @@ public static class RecipeData
 
         Product? javaChip =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P003"
+                p => p.ProductId == "P03"
             );
 
         if (javaChip != null &&
@@ -139,27 +139,27 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             recipe.AddIngredient(
                 frappuccinoBase,
-                150
+                0.15m
             );
 
             recipe.AddIngredient(
                 ice,
-                200
+                0.04m
             );
 
             recipe.AddIngredient(
                 chocolateChips,
-                30
+                0.03m
             );
 
             recipe.AddIngredient(
                 whippedCream,
-                20
+                0.04m
             );
 
             Recipes.Add(recipe);
@@ -172,7 +172,7 @@ public static class RecipeData
 
         Product? americano =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P004"
+                p => p.ProductId == "P04"
             );
 
         if (americano != null &&
@@ -184,12 +184,12 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             recipe.AddIngredient(
                 water,
-                250
+                0.05m
             );
 
             Recipes.Add(recipe);
@@ -202,7 +202,7 @@ public static class RecipeData
 
         Product? mochaFrappuccino =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P005"
+                p => p.ProductId == "P05"
             );
 
         if (mochaFrappuccino != null &&
@@ -217,27 +217,27 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             recipe.AddIngredient(
                 frappuccinoBase,
-                150
+                0.15m
             );
 
             recipe.AddIngredient(
                 ice,
-                200
+                0.04m
             );
 
             recipe.AddIngredient(
                 mochaSauce,
-                25
+                0.025m
             );
 
             recipe.AddIngredient(
                 whippedCream,
-                20
+                0.04m
             );
 
             Recipes.Add(recipe);
@@ -250,7 +250,7 @@ public static class RecipeData
 
         Product? icedLatte =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P006"
+                p => p.ProductId == "P06"
             );
 
         if (icedLatte != null &&
@@ -263,12 +263,12 @@ public static class RecipeData
             // Milk is handled by customization.
             recipe.AddIngredient(
                 coffeeBeans,
-                18
+                0.018m
             );
 
             recipe.AddIngredient(
                 ice,
-                150
+                0.03m
             );
 
             Recipes.Add(recipe);
@@ -297,7 +297,7 @@ public static class RecipeData
 
         Product? chickenPesto =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P009"
+                p => p.ProductId == "P09"
             );
 
         if (chickenPesto != null &&
@@ -311,22 +311,22 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 bread,
-                2
+                0.2m
             );
 
             recipe.AddIngredient(
                 chicken,
-                100
+                0.1m
             );
 
             recipe.AddIngredient(
                 pesto,
-                20
+                0.04m
             );
 
             recipe.AddIngredient(
                 cheese,
-                30
+                0.06m
             );
 
             Recipes.Add(recipe);
@@ -339,7 +339,7 @@ public static class RecipeData
 
         Product? sausageRoll =
             DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P010"
+                p => p.ProductId == "P10"
             );
 
         if (sausageRoll != null &&
@@ -351,12 +351,12 @@ public static class RecipeData
 
             recipe.AddIngredient(
                 pastry,
-                1
+                0.1m
             );
 
             recipe.AddIngredient(
                 sausage,
-                100
+                0.1m
             );
 
             Recipes.Add(recipe);

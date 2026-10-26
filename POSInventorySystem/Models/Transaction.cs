@@ -1,3 +1,4 @@
+using POSInventorySystem.Data;
 using POSInventorySystem.Services;
 
 namespace POSInventorySystem.Models;
@@ -11,11 +12,18 @@ public class Transaction
 
     public string TransactionId { get; private set; }
 
+    // When the order was started
     public DateTime Date { get; private set; }
+
+    // When payment was taken and stock was deducted
+    public DateTime? CompletedAt { get; private set; }
 
     public IReadOnlyList<CartItem> Items => items;
 
     public Payment? Payment { get; private set; }
+
+    // Who rang up the order
+    public string CashierName { get; set; } = "";
 
     public decimal Total
     {
@@ -25,9 +33,46 @@ public class Transaction
         }
     }
 
+    // Used when loading a saved order from the database
+    private Transaction(string transactionId, DateTime date)
+    {
+        TransactionId = transactionId;
+        Date = date;
+    }
+
+    // Rebuilds a completed, saved order without using up an ID number
+    public static Transaction Restore(
+        string transactionId,
+        DateTime orderedAt,
+        DateTime? completedAt,
+        string cashierName,
+        IEnumerable<CartItem> savedItems,
+        decimal? cashReceived)
+    {
+        Transaction transaction = new Transaction(transactionId, orderedAt);
+
+        transaction.CompletedAt = completedAt;
+        transaction.CashierName = cashierName;
+        transaction.items.AddRange(savedItems);
+
+        if (cashReceived.HasValue)
+        {
+            transaction.Payment = new CashPayment(
+                transaction.Total, cashReceived.Value);
+        }
+
+        return transaction;
+    }
+
+    // Continue numbering after the orders already saved
+    public static void SetNextNumber(int number)
+    {
+        transactionCounter = Math.Max(1, number);
+    }
+
     public Transaction()
     {
-        TransactionId = $"T{transactionCounter:D3}";
+        TransactionId = $"T{transactionCounter:D2}";
         transactionCounter++;
 
         Date = DateTime.Now;
@@ -44,7 +89,6 @@ public class Transaction
     {
         if (quantity <= 0)
         {
-            Console.WriteLine("Invalid quantity.");
             return;
         }
 
@@ -58,13 +102,10 @@ public class Transaction
                         customization)
             );
 
+        // Same product and customization: just raise the quantity
         if (existingItem != null)
         {
-            Console.WriteLine(
-                "This exact product and customization " +
-                "is already in the cart."
-            );
-
+            existingItem.AddQuantity(quantity);
             return;
         }
 
@@ -75,6 +116,74 @@ public class Transaction
                 customization
             )
         );
+    }
+
+    // ==========================================
+    // QUANTITY ALREADY IN CART
+    // ==========================================
+
+    public int GetQuantityInCart(
+        Product product,
+        BeverageCustomization? customization = null)
+    {
+        CartItem? existingItem =
+            items.FirstOrDefault(
+                item =>
+                    item.Product.ProductId ==
+                    product.ProductId &&
+                    AreCustomizationsEqual(
+                        item.Customization,
+                        customization)
+            );
+
+        return existingItem?.Quantity ?? 0;
+    }
+
+    // ==========================================
+    // CAN THE WHOLE CART BE MADE?
+    // ==========================================
+    // Optionally includes one extra item that is
+    // about to be added.
+    // ==========================================
+
+    public bool CanFulfill(
+        Product? extraProduct = null,
+        int extraQuantity = 0,
+        BeverageCustomization? extraCustomization = null)
+    {
+        List<(Product, int, BeverageCustomization?)> order =
+            items
+                .Select(item => (
+                    item.Product,
+                    item.Quantity,
+                    item.Customization))
+                .ToList();
+
+        if (extraProduct != null && extraQuantity > 0)
+        {
+            order.Add((
+                extraProduct,
+                extraQuantity,
+                extraCustomization));
+        }
+
+        return new InventoryService().CanFulfillOrder(order);
+    }
+
+    // ==========================================
+    // REMOVE ITEM
+    // ==========================================
+
+    public bool RemoveItem(int index)
+    {
+        if (index < 0 || index >= items.Count)
+        {
+            return false;
+        }
+
+        items.RemoveAt(index);
+
+        return true;
     }
 
     // ==========================================
@@ -129,10 +238,6 @@ public class Transaction
 
         if (items.Count == 0)
         {
-            Console.WriteLine(
-                "Cannot complete an empty transaction."
-            );
-
             return false;
         }
 
@@ -140,30 +245,29 @@ public class Transaction
         // STEP 1: CHECK EVERYTHING FIRST
         // ==========================================
 
-        foreach (CartItem item in items)
+        // The whole cart is checked together because items
+        // can share ingredients.
+        if (!CanFulfill())
         {
-            bool itemAvailable =
-                inventoryService.IsProductAvailable(
-                    item.Product,
-                    item.Quantity,
-                    item.Customization
-                );
-
-            if (!itemAvailable)
-            {
-                Console.WriteLine();
-Console.WriteLine(
-    $"Not enough stock for " +
-    $"{item.Product.Name}."
-);
-
-                return false;
-            }
+            return false;
         }
 
         // ==========================================
         // STEP 2: CONSUME INVENTORY
         // ==========================================
+
+        // Snapshot stock so the deductions can be logged afterwards
+        Dictionary<string, decimal> ingredientsBefore =
+            DataStore.Ingredients.ToDictionary(
+                ingredient => ingredient.IngredientId,
+                ingredient => ingredient.Quantity
+            );
+
+        Dictionary<string, int> productsBefore =
+            DataStore.Products.ToDictionary(
+                product => product.ProductId,
+                product => product.Stock
+            );
 
         foreach (CartItem item in items)
         {
@@ -176,311 +280,68 @@ Console.WriteLine(
 
             if (!consumed)
             {
-                Console.WriteLine();
-                Console.WriteLine(
-                    $"Unable to process inventory for " +
-                    $"{item.Product.Name}."
-                );
-
                 return false;
             }
         }
 
-        return true;
-    }
+        // ==========================================
+        // STEP 3: RECORD TIME AND DEDUCTIONS
+        // ==========================================
 
-    // ==========================================
-    // DISPLAY RECEIPT
-    // ==========================================
+        CompletedAt = DateTime.Now;
 
-    public void DisplayReceipt()
-    {
-        Console.WriteLine();
-
-        Console.WriteLine(
-            "========================================"
-        );
-
-        Console.WriteLine(
-            "              STARBUCKS"
-        );
-
-        Console.WriteLine(
-            "           SALES RECEIPT"
-        );
-
-        Console.WriteLine(
-            "========================================"
-        );
-
-        Console.WriteLine(
-            $"Transaction: {TransactionId}"
-        );
-
-        Console.WriteLine(
-            $"Date: {Date:MMM dd, yyyy hh:mm tt}"
-        );
-
-        Console.WriteLine(
-            "----------------------------------------"
-        );
-
+        // Lock in the prices that were charged
         foreach (CartItem item in items)
         {
-            Console.WriteLine(
-                $"{item.Product.ProductId}  " +
-                $"{item.Product.Name}"
-            );
-
-            // ======================================
-            // BEVERAGE CUSTOMIZATION
-            // ======================================
-
-            if (item.Customization != null)
-            {
-                BeverageCustomization customization =
-                    item.Customization;
-
-                Console.WriteLine(
-                    $"      {customization.Size} / " +
-                    $"{customization.Serving}"
-                );
-
-                Console.WriteLine(
-                    $"      {customization.Milk}"
-                );
-
-                if (customization.ExtraShots > 0)
-                {
-                    Console.WriteLine(
-                        $"      +{customization.ExtraShots} " +
-                        $"Espresso Shot(s)"
-                    );
-                }
-                else
-                {
-                    Console.WriteLine(
-                        "      No Extra Shots"
-                    );
-                }
-
-                if (customization.Syrup != "None")
-                {
-                    Console.WriteLine(
-                        $"      {customization.Syrup} Syrup"
-                    );
-                }
-                else
-                {
-                    Console.WriteLine(
-                        "      No Syrup"
-                    );
-                }
-
-                Console.WriteLine();
-
-                // ==================================
-                // BASE PRICE
-                // ==================================
-
-                Console.WriteLine(
-                    $"      {"Base Price:",-20}" +
-                    $"₱{item.Product.Price,8:F2}"
-                );
-
-                // ==================================
-                // SIZE PRICE
-                // ==================================
-
-                decimal sizePrice = 0m;
-
-                if (customization.Size == "Grande")
-                {
-                    sizePrice = 10m;
-                }
-                else if (customization.Size == "Venti")
-                {
-                    sizePrice = 20m;
-                }
-
-                Console.WriteLine(
-                    $"      {customization.Size + ":",-20}" +
-                    $"+₱{sizePrice,7:F2}"
-                );
-
-                // ==================================
-                // MILK PRICE
-                // ==================================
-
-                decimal milkPrice = 0m;
-
-                if (customization.Milk == "Soy Milk" ||
-                    customization.Milk == "Oat Milk" ||
-                    customization.Milk == "Almond Milk")
-                {
-                    milkPrice = 20m;
-                }
-
-                Console.WriteLine(
-                    $"      {customization.Milk + ":",-20}" +
-                    $"+₱{milkPrice,7:F2}"
-                );
-
-                // ==================================
-                // ESPRESSO SHOT PRICE
-                // ==================================
-
-                decimal shotPrice =
-                    customization.ExtraShots * 30m;
-
-                Console.WriteLine(
-                    $"      {"Espresso Shots:",-20}" +
-                    $"+₱{shotPrice,7:F2}"
-                );
-
-                // ==================================
-                // SYRUP PRICE
-                // ==================================
-
-                decimal syrupPrice = 0m;
-
-                if (customization.Syrup != "None")
-                {
-                    syrupPrice = 15m;
-                }
-
-                Console.WriteLine(
-                    $"      {customization.Syrup + " Syrup:",-20}" +
-                    $"+₱{syrupPrice,7:F2}"
-                );
-            }
-            else
-            {
-                // ==================================
-                // FOOD ITEM
-                // ==================================
-
-                Console.WriteLine();
-
-                Console.WriteLine(
-                    $"      {"Base Price:",-20}" +
-                    $"₱{item.Product.Price,8:F2}"
-                );
-            }
-
-            Console.WriteLine();
-
-            // ======================================
-            // UNIT PRICE
-            // ======================================
-
-            Console.WriteLine(
-                $"      {"Unit Price:",-20}" +
-                $"₱{item.UnitPrice,8:F2}"
-            );
-
-            // ======================================
-            // QUANTITY
-            // ======================================
-
-            Console.WriteLine(
-                $"      {"Quantity:",-20}" +
-                $"{item.Quantity,8}"
-            );
-
-            // ======================================
-            // SUBTOTAL
-            // ======================================
-
-            Console.WriteLine(
-                $"      {"Subtotal:",-20}" +
-                $"₱{item.Subtotal,8:F2}"
-            );
-
-            Console.WriteLine();
-
-            Console.WriteLine(
-                "----------------------------------------"
-            );
+            item.FreezePrice();
         }
 
-        // ==========================================
-        // TOTAL
-        // ==========================================
-
-        Console.WriteLine(
-            $"TOTAL:                    ₱{Total:F2}"
-        );
-
-        // ==========================================
-        // PAYMENT
-        // ==========================================
-
-        if (Payment != null)
+        foreach (Ingredient ingredient in DataStore.Ingredients)
         {
-            Console.WriteLine(
-                "----------------------------------------"
-            );
+            decimal used =
+                ingredientsBefore[ingredient.IngredientId] -
+                ingredient.Quantity;
 
-            if (Payment is CashPayment cashPayment)
+            if (used > 0)
             {
-                Console.WriteLine(
-                    "Payment: Cash"
-                );
-
-                Console.WriteLine(
-                    $"Amount Due:               " +
-                    $"₱{cashPayment.Amount:F2}"
-                );
-
-                Console.WriteLine(
-                    $"Cash Received:            " +
-                    $"₱{cashPayment.CashReceived:F2}"
-                );
-
-                Console.WriteLine(
-                    $"Change:                   " +
-                    $"₱{cashPayment.Change:F2}"
-                );
-            }
-            else if (Payment is GCashPayment)
-            {
-                Console.WriteLine(
-                    "Payment: GCash"
-                );
-
-                Console.WriteLine(
-                    $"Amount Paid:              " +
-                    $"₱{Payment.Amount:F2}"
-                );
-            }
-            else if (Payment is CardPayment)
-            {
-                Console.WriteLine(
-                    "Payment: Card"
-                );
-
-                Console.WriteLine(
-                    $"Amount Paid:              " +
-                    $"₱{Payment.Amount:F2}"
+                DataStore.StockRecords.Add(
+                    new StockRecord(
+                        CompletedAt.Value,
+                        ingredient.IngredientId,
+                        ingredient.Name,
+                        "SALE",
+                        "pack",
+                        used,
+                        -used,
+                        TransactionId
+                    )
                 );
             }
         }
 
-        Console.WriteLine(
-            "----------------------------------------"
-        );
+        foreach (Product product in DataStore.Products)
+        {
+            int sold =
+                productsBefore[product.ProductId] -
+                product.Stock;
 
-        Console.WriteLine(
-            "          Thank you for your"
-        );
+            if (sold > 0)
+            {
+                DataStore.StockRecords.Add(
+                    new StockRecord(
+                        CompletedAt.Value,
+                        product.ProductId,
+                        product.Name,
+                        "SALE",
+                        "pc",
+                        sold,
+                        -sold,
+                        TransactionId
+                    )
+                );
+            }
+        }
 
-        Console.WriteLine(
-            "             purchase!"
-        );
-
-        Console.WriteLine(
-            "========================================"
-        );
+        return true;
     }
 }

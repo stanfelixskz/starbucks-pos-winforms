@@ -11,10 +11,4 @@ public class FoodProduct : Product
         : base(productId, name, price, stock, category)
     {
     }
-
-    public override void DisplayDetails()
-    {
-        Console.WriteLine("----- FOOD PRODUCT -----");
-        base.DisplayDetails();
-    }
 }

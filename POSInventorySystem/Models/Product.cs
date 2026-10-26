@@ -8,6 +8,13 @@ public class Product
     public int Stock { get; private set; }
     public string Category { get; private set; }
 
+    // At or below this many pieces a food item counts as low
+    public int LowStockLevel { get; private set; } = 5;
+
+    // Staff can stop selling an item by hand (for example a broken
+    // machine), even when the ingredients are there
+    public bool Unavailable { get; private set; }
+
     public Product(
         string productId,
         string name,
@@ -22,29 +29,35 @@ public class Product
         Category = category;
     }
 
-    public virtual void DisplayDetails()
-    {
-        Console.WriteLine($"Product ID : {ProductId}");
-        Console.WriteLine($"Name       : {Name}");
-        Console.WriteLine($"Price      : ₱{Price:F2}");
-        Console.WriteLine($"Stock      : {Stock}");
-        Console.WriteLine($"Category   : {Category}");
-    }
-
     public void AddStock(int quantity)
     {
         if (quantity <= 0)
         {
-            Console.WriteLine("Invalid stock quantity.");
             return;
         }
 
         Stock += quantity;
     }
 
+    // Used by a stocktake: replaces the count with the counted number
+    public void SetStock(int quantity)
+    {
+        Stock = Math.Max(0, quantity);
+    }
+
+    public void SetUnavailable(bool value)
+    {
+        Unavailable = value;
+    }
+
+    public void SetLowStockLevel(int level)
+    {
+        LowStockLevel = Math.Max(0, level);
+    }
+
     public bool IsLowStock()
     {
-        return Stock <= 5;
+        return Stock <= LowStockLevel;
     }
     public void UpdateProductInfo(
     string name,
@@ -64,12 +77,5 @@ public class Product
 
     Stock -= quantity;
     return true;
-}
-
-    public virtual void DisplayPOSItem()
-{
-    Console.WriteLine(
-        $"{ProductId,-6} {Name,-25} ₱{Price,8:F2}"
-    );
 }
 }

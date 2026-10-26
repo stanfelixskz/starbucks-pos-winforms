@@ -77,32 +77,4 @@ public class BeverageCustomization
 
         return additionalPrice;
     }
-
-
-    // ==========================================
-    // DISPLAY CUSTOMIZATION
-    // ==========================================
-
-    public void DisplayCustomization()
-    {
-        Console.WriteLine(
-            $"Size: {Size}"
-        );
-
-        Console.WriteLine(
-            $"Serving: {Serving}"
-        );
-
-        Console.WriteLine(
-            $"Milk: {Milk}"
-        );
-
-        Console.WriteLine(
-            $"Extra Shots: {ExtraShots}"
-        );
-
-        Console.WriteLine(
-            $"Syrup: {Syrup}"
-        );
-    }
 }

@@ -3,581 +3,505 @@ using POSInventorySystem.Models;
 
 namespace POSInventorySystem.Services;
 
+// Admin operations. These return results instead of printing,
+// so any screen (or a database layer later) can use them.
 public class AdminService
 {
     // ==========================================
-    // VIEW INVENTORY
+    // PRODUCTS
     // ==========================================
 
-    public void ViewInventory()
+    public string NextProductId()
     {
-        Console.WriteLine();
-        Console.WriteLine("==============================================");
-        Console.WriteLine("              PRODUCT INVENTORY");
-        Console.WriteLine("==============================================");
-
-        Console.WriteLine(
-            $"{"ID",-6} {"PRODUCT",-25} {"PRICE",10} {"STOCK",8}"
-        );
-
-        Console.WriteLine("----------------------------------------------");
+        int highest = 0;
 
         foreach (Product product in DataStore.Products)
         {
-            Console.WriteLine(
-                $"{product.ProductId,-6} " +
-                $"{product.Name,-25} " +
-                $"₱{product.Price,9:F2} " +
-                $"{product.Stock,8}"
-            );
+            if (product.ProductId.Length > 1 &&
+                int.TryParse(
+                    product.ProductId.Substring(1),
+                    out int number) &&
+                number > highest)
+            {
+                highest = number;
+            }
         }
 
-        Console.WriteLine("==============================================");
-
-        Console.WriteLine();
-        Console.WriteLine("==============================================");
-        Console.WriteLine("             INGREDIENT INVENTORY");
-        Console.WriteLine("==============================================");
-
-        Console.WriteLine(
-            $"{"ID",-6} {"INGREDIENT",-25} {"QUANTITY",12} {"UNIT",-8}"
-        );
-
-        Console.WriteLine("----------------------------------------------");
-
-        foreach (Ingredient item in DataStore.Ingredients)
-        {
-            Console.WriteLine(
-                $"{item.IngredientId,-6} " +
-                $"{item.Name,-25} " +
-                $"{item.Quantity,12:F2} " +
-                $"{item.Unit,-8}"
-            );
-        }
-
-        Console.WriteLine("==============================================");
+        return $"P{highest + 1:D2}";
     }
 
-
-    // ==========================================
-    // ADD PRODUCT
-    // ==========================================
-
-    public void AddProduct()
+    public bool AddProduct(
+        string name,
+        decimal price,
+        int stock,
+        bool isBeverage,
+        int lowStockLevel,
+        out string error)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("          ADD PRODUCT");
-        Console.WriteLine("=================================");
-
-        Console.Write("Enter Product ID: ");
-        string? productId = Console.ReadLine();
-
-        if (string.IsNullOrWhiteSpace(productId))
-        {
-            Console.WriteLine("Invalid Product ID.");
-            return;
-        }
-
-        bool idExists = DataStore.Products.Any(
-            product => product.ProductId.Equals(
-                productId,
-                StringComparison.OrdinalIgnoreCase)
-        );
-
-        if (idExists)
-        {
-            Console.WriteLine("Product ID already exists.");
-            return;
-        }
-
-        Console.Write("Enter Product Name: ");
-        string? name = Console.ReadLine();
+        error = "";
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            Console.WriteLine("Invalid product name.");
-            return;
+            error = "Product name is required.";
+            return false;
         }
 
-        Console.Write("Enter Price: ");
-
-        if (!decimal.TryParse(
-            Console.ReadLine(),
-            out decimal price) ||
-            price <= 0)
+        if (price <= 0)
         {
-            Console.WriteLine("Invalid price.");
-            return;
+            error = "Price must be greater than zero.";
+            return false;
         }
 
-        Console.Write("Enter Initial Stock: ");
-
-        if (!int.TryParse(
-            Console.ReadLine(),
-            out int stock) ||
-            stock < 0)
+        if (stock < 0)
         {
-            Console.WriteLine("Invalid stock quantity.");
-            return;
+            error = "Stock cannot be negative.";
+            return false;
         }
 
-        Console.WriteLine();
-        Console.WriteLine("Select Product Type:");
-        Console.WriteLine("1. Food");
-        Console.WriteLine("2. Beverage");
-        Console.Write("Choose product type: ");
+        string id = NextProductId();
 
-        string? typeChoice = Console.ReadLine();
+        Product product = isBeverage
+            ? new BeverageProduct(
+                id, name.Trim(), price, stock, "Beverage")
+            : new FoodProduct(
+                id, name.Trim(), price, stock, "Food");
 
-        Product product;
+        product.SetLowStockLevel(lowStockLevel);
 
-        switch (typeChoice)
+        try
         {
-            case "1":
-                product = new FoodProduct(
-                    productId,
-                    name,
-                    price,
-                    stock,
-                    "Food"
-                );
-                break;
-
-            case "2":
-                product = new BeverageProduct(
-                    productId,
-                    name,
-                    price,
-                    stock,
-                    "Beverage"
-                );
-                break;
-
-            default:
-                Console.WriteLine("Invalid product type.");
-                return;
+            Database.AddProduct(product);
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not save the product: {ex.Message}";
+            return false;
         }
 
         DataStore.Products.Add(product);
 
-        Console.WriteLine();
-        Console.WriteLine("Product added successfully.");
+        return true;
     }
 
-
-    // ==========================================
-    // UPDATE PRODUCT
-    // ==========================================
-
-    public void UpdateProduct()
+    public bool UpdateProduct(
+        Product product,
+        string name,
+        decimal price,
+        int lowStockLevel,
+        out string error)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("         UPDATE PRODUCT");
-        Console.WriteLine("=================================");
+        error = "";
 
-        Console.Write("Enter Product ID: ");
-        string? productId = Console.ReadLine();
-
-        Product? product = DataStore.Products.FirstOrDefault(
-            item => item.ProductId.Equals(
-                productId,
-                StringComparison.OrdinalIgnoreCase)
-        );
-
-        if (product == null)
+        if (string.IsNullOrWhiteSpace(name))
         {
-            Console.WriteLine("Product not found.");
-            return;
+            error = "Product name is required.";
+            return false;
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"Current Name: {product.Name}");
-        Console.Write("Enter New Name: ");
-
-        string? newName = Console.ReadLine();
-
-        if (string.IsNullOrWhiteSpace(newName))
+        if (price <= 0)
         {
-            Console.WriteLine("Invalid product name.");
-            return;
+            error = "Price must be greater than zero.";
+            return false;
         }
 
-        Console.WriteLine(
-            $"Current Price: ₱{product.Price:F2}"
-        );
-
-        Console.Write("Enter New Price: ");
-
-        if (!decimal.TryParse(
-            Console.ReadLine(),
-            out decimal newPrice) ||
-            newPrice <= 0)
-        {
-            Console.WriteLine("Invalid price.");
-            return;
-        }
-
-        Console.WriteLine(
-            $"Current Category: {product.Category}"
-        );
-
-        Console.Write("Enter New Category: ");
-
-        string? newCategory = Console.ReadLine();
-
-        if (string.IsNullOrWhiteSpace(newCategory))
-        {
-            Console.WriteLine("Invalid category.");
-            return;
-        }
+        string oldName = product.Name;
+        decimal oldPrice = product.Price;
+        int oldLevel = product.LowStockLevel;
 
         product.UpdateProductInfo(
-            newName,
-            newPrice,
-            newCategory
+            name.Trim(),
+            price,
+            product.Category
         );
 
-        Console.WriteLine();
-        Console.WriteLine("Product updated successfully.");
+        product.SetLowStockLevel(lowStockLevel);
+
+        try
+        {
+            Database.UpdateProduct(product);
+        }
+        catch (Exception ex)
+        {
+            // Put the old values back so memory matches the database
+            product.UpdateProductInfo(oldName, oldPrice, product.Category);
+            product.SetLowStockLevel(oldLevel);
+            error = $"Could not save the change: {ex.Message}";
+            return false;
+        }
+
+        return true;
     }
 
 
     // ==========================================
-    // RESTOCK PRODUCT
+    // AVAILABILITY (stop / resume selling)
     // ==========================================
 
-    public void RestockProduct()
+    public bool SetUnavailable(Product product, bool value, out string error)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("         RESTOCK PRODUCT");
-        Console.WriteLine("=================================");
+        error = "";
 
-        Console.Write("Enter Product ID: ");
-        string? productId = Console.ReadLine();
+        bool old = product.Unavailable;
+        product.SetUnavailable(value);
 
-        Product? product = DataStore.Products.FirstOrDefault(
-            item => item.ProductId.Equals(
-                productId,
-                StringComparison.OrdinalIgnoreCase)
+        try
+        {
+            Database.SetProductUnavailable(product);
+        }
+        catch (Exception ex)
+        {
+            product.SetUnavailable(old);
+            error = $"Could not save the change: {ex.Message}";
+            return false;
+        }
+
+        return true;
+    }
+
+    // ==========================================
+    // INGREDIENTS (add / edit)
+    // ==========================================
+
+    public string NextIngredientId()
+    {
+        int highest = 0;
+
+        foreach (Ingredient ingredient in DataStore.Ingredients)
+        {
+            if (ingredient.IngredientId.Length > 1 &&
+                int.TryParse(
+                    ingredient.IngredientId.Substring(1),
+                    out int number) &&
+                number > highest)
+            {
+                highest = number;
+            }
+        }
+
+        return $"I{highest + 1:D3}";
+    }
+
+    private static string CheckIngredient(
+        string name,
+        string unit,
+        decimal packSize,
+        decimal lowAt,
+        decimal par)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "Ingredient name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(unit))
+        {
+            return "Choose a unit (g, ml or pcs).";
+        }
+
+        if (packSize <= 0)
+        {
+            return "Pack size must be greater than zero.";
+        }
+
+        if (lowAt < 0 || par < 0)
+        {
+            return "Reorder and par levels can not be negative.";
+        }
+
+        if (par < lowAt)
+        {
+            return "The par level can not be lower than the reorder level.";
+        }
+
+        return "";
+    }
+
+    public bool AddIngredient(
+        string name,
+        string unit,
+        decimal packSize,
+        decimal lowAt,
+        decimal par,
+        decimal startingPacks,
+        out string error)
+    {
+        error = CheckIngredient(name, unit, packSize, lowAt, par);
+
+        if (error.Length > 0)
+        {
+            return false;
+        }
+
+        Ingredient ingredient = new Ingredient(
+            NextIngredientId(),
+            name.Trim(),
+            Math.Max(0, startingPacks),
+            lowAt,
+            unit,
+            packSize,
+            par);
+
+        try
+        {
+            Database.AddIngredient(ingredient);
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not save the ingredient: {ex.Message}";
+            return false;
+        }
+
+        DataStore.Ingredients.Add(ingredient);
+
+        // The opening stock is a dated record like any other delivery
+        if (ingredient.Quantity > 0)
+        {
+            DataStore.StockRecords.Add(
+                new StockRecord(
+                    DateTime.Now,
+                    ingredient.IngredientId,
+                    ingredient.Name,
+                    "RESTOCK",
+                    "pack",
+                    ingredient.Quantity,
+                    ingredient.Quantity,
+                    "Admin",
+                    "Opening stock"));
+
+            try
+            {
+                Database.SaveInventory();
+            }
+            catch (Exception ex)
+            {
+                error = $"Saved, but the opening stock record failed: {ex.Message}";
+            }
+        }
+
+        return true;
+    }
+
+    public bool UpdateIngredient(
+        Ingredient ingredient,
+        string name,
+        string unit,
+        decimal packSize,
+        decimal lowAt,
+        decimal par,
+        out string error)
+    {
+        error = CheckIngredient(name, unit, packSize, lowAt, par);
+
+        if (error.Length > 0)
+        {
+            return false;
+        }
+
+        string oldName = ingredient.Name;
+        string oldUnit = ingredient.Unit;
+        decimal oldSize = ingredient.PackSize;
+        decimal oldLow = ingredient.LowStockThreshold;
+        decimal oldPar = ingredient.ParLevel;
+
+        ingredient.Name = name.Trim();
+        ingredient.Unit = unit;
+        ingredient.PackSize = packSize;
+        ingredient.LowStockThreshold = lowAt;
+        ingredient.ParLevel = par;
+
+        try
+        {
+            Database.UpdateIngredient(ingredient);
+        }
+        catch (Exception ex)
+        {
+            ingredient.Name = oldName;
+            ingredient.Unit = oldUnit;
+            ingredient.PackSize = oldSize;
+            ingredient.LowStockThreshold = oldLow;
+            ingredient.ParLevel = oldPar;
+
+            error = $"Could not save the change: {ex.Message}";
+            return false;
+        }
+
+        return true;
+    }
+
+    // ==========================================
+    // RECEIVE (delivery in)
+    // ==========================================
+
+    // Adds packs (or boxes of packs) to an ingredient and logs it.
+    // The note holds the supplier or delivery reference.
+    public decimal RestockIngredient(
+        Ingredient ingredient,
+        string unit,
+        int count,
+        int packsPerBox,
+        string note = "")
+    {
+        decimal packsAdded = PacksFor(unit, count, packsPerBox);
+
+        ingredient.Quantity += packsAdded;
+
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                ingredient.IngredientId,
+                ingredient.Name,
+                "RESTOCK",
+                unit,
+                count,
+                packsAdded,
+                "Admin",
+                note
+            )
         );
 
-        if (product == null)
-        {
-            Console.WriteLine("Product not found.");
-            return;
-        }
+        Database.SaveInventory();
 
-        Console.WriteLine();
-        Console.WriteLine($"Product: {product.Name}");
-        Console.WriteLine($"Current Stock: {product.Stock}");
+        return packsAdded;
+    }
 
-        Console.Write("Enter quantity to add: ");
-
-        if (!int.TryParse(
-            Console.ReadLine(),
-            out int quantity) ||
-            quantity <= 0)
-        {
-            Console.WriteLine("Invalid stock quantity.");
-            return;
-        }
-
+    public void RestockProduct(Product product, int quantity, string note = "")
+    {
         product.AddStock(quantity);
 
-        Console.WriteLine();
-        Console.WriteLine("Product restocked successfully.");
-        Console.WriteLine($"New Stock: {product.Stock}");
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                product.ProductId,
+                product.Name,
+                "RESTOCK",
+                "pc",
+                quantity,
+                quantity,
+                "Admin",
+                note
+            )
+        );
+
+        Database.SaveInventory();
     }
 
-
     // ==========================================
-    // RESTOCK INGREDIENT
+    // WASTE (thrown away, broken, expired)
     // ==========================================
 
-    public void RestockIngredient()
+    public void WasteIngredient(
+        Ingredient ingredient,
+        string unit,
+        int count,
+        int packsPerBox,
+        string reason,
+        string note)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("       RESTOCK INGREDIENT");
-        Console.WriteLine("=================================");
+        decimal packs = PacksFor(unit, count, packsPerBox);
 
-        Console.Write("Enter Ingredient ID: ");
-        string? ingredientId = Console.ReadLine();
+        ingredient.Quantity -= packs;
 
-        Ingredient? ingredient = DataStore.Ingredients.FirstOrDefault(
-            item => item.IngredientId.Equals(
-                ingredientId,
-                StringComparison.OrdinalIgnoreCase)
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                ingredient.IngredientId,
+                ingredient.Name,
+                "WASTE",
+                unit,
+                count,
+                -packs,
+                "Admin",
+                Describe(reason, note)
+            )
         );
 
-        if (ingredient == null)
-        {
-            Console.WriteLine("Ingredient not found.");
-            return;
-        }
-
-        Console.WriteLine();
-        Console.WriteLine($"Ingredient: {ingredient.Name}");
-
-        Console.WriteLine(
-            $"Current Quantity: " +
-            $"{ingredient.Quantity:F2} {ingredient.Unit}"
-        );
-
-        Console.Write("Enter quantity to add: ");
-
-        if (!decimal.TryParse(
-            Console.ReadLine(),
-            out decimal quantity) ||
-            quantity <= 0)
-        {
-            Console.WriteLine("Invalid quantity.");
-            return;
-        }
-
-        ingredient.Quantity += quantity;
-
-        Console.WriteLine();
-        Console.WriteLine(
-            "Ingredient restocked successfully."
-        );
-
-        Console.WriteLine(
-            $"New Quantity: " +
-            $"{ingredient.Quantity:F2} {ingredient.Unit}"
-        );
+        Database.SaveInventory();
     }
 
-
-    // ==========================================
-    // VIEW LOW STOCK
-    // ==========================================
-
-    public void ViewLowStock()
+    public void WasteProduct(Product product, int quantity, string reason, string note)
     {
-        Console.WriteLine();
-        Console.WriteLine("========================================");
-        Console.WriteLine("           LOW STOCK INVENTORY");
-        Console.WriteLine("========================================");
+        product.RemoveStock(quantity);
 
-        // ==========================================
-        // LOW STOCK PRODUCTS
-        // ==========================================
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                product.ProductId,
+                product.Name,
+                "WASTE",
+                "pc",
+                quantity,
+                -quantity,
+                "Admin",
+                Describe(reason, note)
+            )
+        );
 
-        Console.WriteLine();
-        Console.WriteLine("PRODUCTS");
-        Console.WriteLine("----------------------------------------");
-
-        bool hasLowStockProducts = false;
-
-        foreach (Product product in DataStore.Products)
-        {
-            if (product.IsLowStock())
-            {
-                Console.WriteLine(
-                    $"{product.ProductId,-6} " +
-                    $"{product.Name,-25} " +
-                    $"Stock: {product.Stock}"
-                );
-
-                hasLowStockProducts = true;
-            }
-        }
-
-        if (!hasLowStockProducts)
-        {
-            Console.WriteLine(
-                "No products are currently low on stock."
-            );
-        }
-
-
-        // ==========================================
-        // LOW STOCK INGREDIENTS
-        // ==========================================
-
-        Console.WriteLine();
-        Console.WriteLine("INGREDIENTS");
-        Console.WriteLine("----------------------------------------");
-
-        bool hasLowStockIngredients = false;
-
-        foreach (Ingredient item in DataStore.Ingredients)
-        {
-            if (item.IsLowStock())
-            {
-                Console.WriteLine(
-                    $"{item.IngredientId,-6} " +
-                    $"{item.Name,-25} " +
-                    $"Quantity: {item.Quantity:F2} {item.Unit}"
-                );
-
-                hasLowStockIngredients = true;
-            }
-        }
-
-        if (!hasLowStockIngredients)
-        {
-            Console.WriteLine(
-                "No ingredients are currently low on stock."
-            );
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("========================================");
+        Database.SaveInventory();
     }
 
-
     // ==========================================
-    // VIEW SALES RECORDS
+    // ADJUST (stocktake: set the counted amount)
     // ==========================================
 
-    public void ViewSalesRecords()
+    public void AdjustIngredient(
+        Ingredient ingredient,
+        decimal counted,
+        string reason,
+        string note)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("          SALES RECORDS");
-        Console.WriteLine("=================================");
+        decimal change = counted - ingredient.Quantity;
 
-        if (DataStore.Transactions.Count == 0)
-        {
-            Console.WriteLine(
-                "No sales transactions recorded."
-            );
+        ingredient.Quantity = counted;
 
-            Console.WriteLine("=================================");
-            return;
-        }
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                ingredient.IngredientId,
+                ingredient.Name,
+                "ADJUST",
+                "pack",
+                Math.Abs(change),
+                change,
+                "Admin",
+                Describe(reason, note)
+            )
+        );
 
-        foreach (Transaction transaction
-                 in DataStore.Transactions)
-        {
-            Console.WriteLine();
-            Console.WriteLine(
-                $"Transaction ID: " +
-                $"{transaction.TransactionId}"
-            );
-
-            Console.WriteLine(
-                $"Date: {transaction.Date}"
-            );
-
-            Console.WriteLine("Items:");
-
-            foreach (CartItem item in transaction.Items)
-            {
-                Console.WriteLine(
-                    $"  {item.Product.Name} " +
-                    $"x{item.Quantity} = " +
-                    $"₱{item.Subtotal:F2}"
-                );
-            }
-
-            Console.WriteLine(
-                $"Total: ₱{transaction.Total:F2}"
-            );
-
-            Console.WriteLine(
-                $"Payment: " +
-                $"{transaction.Payment?.GetType().Name ?? "N/A"}"
-            );
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("=================================");
+        Database.SaveInventory();
     }
 
-
-    // ==========================================
-    // VIEW SALES SUMMARY
-    // ==========================================
-
-    public void ViewSalesSummary()
+    public void AdjustProduct(Product product, int counted, string reason, string note)
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("       TODAY'S SALES SUMMARY");
-        Console.WriteLine("=================================");
+        int change = counted - product.Stock;
 
-        DateTime today = DateTime.Today;
+        product.SetStock(counted);
 
-        List<Transaction> todayTransactions =
-            DataStore.Transactions
-                .Where(transaction =>
-                    transaction.Date.Date == today)
-                .ToList();
-
-        Console.WriteLine(
-            $"Date: {today:MMMM dd, yyyy}"
+        DataStore.StockRecords.Add(
+            new StockRecord(
+                DateTime.Now,
+                product.ProductId,
+                product.Name,
+                "ADJUST",
+                "pc",
+                Math.Abs(change),
+                change,
+                "Admin",
+                Describe(reason, note)
+            )
         );
 
-        Console.WriteLine();
-
-        if (todayTransactions.Count == 0)
-        {
-            Console.WriteLine(
-                "No sales transactions recorded today."
-            );
-
-            Console.WriteLine("=================================");
-            return;
-        }
-
-        int totalTransactions =
-            todayTransactions.Count;
-
-        decimal totalSales =
-            todayTransactions.Sum(
-                transaction => transaction.Total
-            );
-
-        decimal cashSales =
-            todayTransactions
-                .Where(transaction =>
-                    transaction.Payment is CashPayment)
-                .Sum(transaction => transaction.Total);
-
-        decimal gcashSales =
-            todayTransactions
-                .Where(transaction =>
-                    transaction.Payment is GCashPayment)
-                .Sum(transaction => transaction.Total);
-
-        decimal cardSales =
-            todayTransactions
-                .Where(transaction =>
-                    transaction.Payment is CardPayment)
-                .Sum(transaction => transaction.Total);
-
-        Console.WriteLine(
-            $"Total Transactions: {totalTransactions}"
-        );
-
-        Console.WriteLine(
-            $"Total Sales: ₱{totalSales:F2}"
-        );
-
-        Console.WriteLine();
-
-        Console.WriteLine("---------------------------------");
-        Console.WriteLine("       PAYMENT BREAKDOWN");
-        Console.WriteLine("---------------------------------");
-
-        Console.WriteLine(
-            $"Cash Sales:  ₱{cashSales:F2}"
-        );
-
-        Console.WriteLine(
-            $"GCash Sales: ₱{gcashSales:F2}"
-        );
-
-        Console.WriteLine(
-            $"Card Sales:  ₱{cardSales:F2}"
-        );
-
-        Console.WriteLine("=================================");
+        Database.SaveInventory();
     }
+
+    // ==========================================
+    // HELPERS
+    // ==========================================
+
+    // Packs for a count entered as packs or boxes
+    public static decimal PacksFor(string unit, int count, int packsPerBox) =>
+        unit == "box" ? count * packsPerBox : count;
+
+    // "Spoiled: left out overnight" (note is optional)
+    private static string Describe(string reason, string note) =>
+        note.Length == 0 ? reason : $"{reason}: {note}";
 }

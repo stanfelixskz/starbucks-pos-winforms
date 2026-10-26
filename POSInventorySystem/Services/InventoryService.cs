@@ -5,156 +5,6 @@ namespace POSInventorySystem.Services;
 
 public class InventoryService
 {
-    // ==========================================
-    // PRODUCT INVENTORY
-    // ==========================================
-
-    public void DisplayAllProducts()
-    {
-        Console.WriteLine("========================================");
-        Console.WriteLine("          PRODUCT INVENTORY");
-        Console.WriteLine("========================================");
-
-        // ==========================================
-        // BEVERAGES
-        // ==========================================
-
-        Console.WriteLine();
-        Console.WriteLine("BEVERAGES");
-        Console.WriteLine("----------------------------------------");
-
-        Console.WriteLine(
-            $"{"ID",-6} {"PRODUCT",-25} {"STATUS",-15}"
-        );
-
-        Console.WriteLine("----------------------------------------");
-
-        foreach (Product product in DataStore.Products)
-        {
-            if (product is BeverageProduct)
-            {
-                bool available =
-                    IsProductAvailable(
-                        product,
-                        1
-                    );
-
-                string status =
-                    available
-                        ? "AVAILABLE"
-                        : "UNAVAILABLE";
-
-                Console.WriteLine(
-                    $"{product.ProductId,-6} " +
-                    $"{product.Name,-25} " +
-                    $"{status,-15}"
-                );
-            }
-        }
-
-
-        // ==========================================
-        // FOOD
-        // ==========================================
-
-        Console.WriteLine();
-        Console.WriteLine("FOOD");
-        Console.WriteLine("----------------------------------------");
-
-        Console.WriteLine(
-            $"{"ID",-6} {"PRODUCT",-25} {"STOCK",-10}"
-        );
-
-        Console.WriteLine("----------------------------------------");
-
-        foreach (Product product in DataStore.Products)
-        {
-            if (product is FoodProduct)
-            {
-                Console.WriteLine(
-                    $"{product.ProductId,-6} " +
-                    $"{product.Name,-25} " +
-                    $"{product.Stock,-10}"
-                );
-            }
-        }
-
-        Console.WriteLine("========================================");
-    }
-
-
-    // ==========================================
-    // FIND PRODUCT
-    // ==========================================
-
-    public Product? FindProduct(string productId)
-    {
-        return DataStore.Products
-            .FirstOrDefault(product =>
-                product.ProductId.Equals(
-                    productId,
-                    StringComparison.OrdinalIgnoreCase
-                ));
-    }
-
-
-    // ==========================================
-    // RESTOCK PRODUCT
-    // ==========================================
-
-    public bool RestockProduct(
-        string productId,
-        int quantity)
-    {
-        Product? product =
-            FindProduct(productId);
-
-        if (product == null ||
-            quantity <= 0)
-        {
-            return false;
-        }
-
-        product.AddStock(quantity);
-
-        return true;
-    }
-
-
-    // ==========================================
-    // REMOVE PRODUCT STOCK
-    // ==========================================
-
-    public bool RemoveStock(
-        string productId,
-        int quantity)
-    {
-        Product? product =
-            FindProduct(productId);
-
-        if (product == null ||
-            quantity <= 0 ||
-            product.Stock < quantity)
-        {
-            return false;
-        }
-
-        product.RemoveStock(quantity);
-
-        return true;
-    }
-
-
-    // ==========================================
-    // GET LOW STOCK PRODUCTS
-    // ==========================================
-
-    public List<Product> GetLowStockProducts()
-    {
-        return DataStore.Products
-            .Where(product => product.IsLowStock())
-            .ToList();
-    }
 
 
     // ==========================================
@@ -167,6 +17,12 @@ public bool IsProductAvailable(
     BeverageCustomization? customization = null)
 {
     if (quantity <= 0)
+    {
+        return false;
+    }
+
+    // Switched off by hand
+    if (product.Unavailable)
     {
         return false;
     }
@@ -223,8 +79,7 @@ public bool IsProductAvailable(
             // Alternative Milk
             // ------------------------------
 
-            if (customization.Milk != "None" &&
-                customization.Milk != "Whole Milk")
+            if (customization.Milk != "None")
             {
                 Ingredient? milk =
                     GetMilkIngredient(
@@ -237,7 +92,7 @@ public bool IsProductAvailable(
                 }
 
                 decimal requiredMilk =
-                    200m * quantity;
+                    0.2m * quantity;
 
                 if (milk.Quantity < requiredMilk)
                 {
@@ -260,7 +115,7 @@ public bool IsProductAvailable(
                 }
 
                 decimal requiredEspresso =
-                    30m *
+                    0.03m *
                     customization.ExtraShots *
                     quantity;
 
@@ -288,7 +143,7 @@ public bool IsProductAvailable(
                 }
 
                 decimal requiredSyrup =
-                    15m * quantity;
+                    0.015m * quantity;
 
                 if (syrup.Quantity <
                     requiredSyrup)
@@ -320,6 +175,89 @@ public bool IsProductAvailable(
 }
 
     // ==========================================
+    // CHECK A WHOLE ORDER
+    // ==========================================
+    // Items can share ingredients, so checking each item on
+    // its own is not enough. This deducts everything in turn
+    // and then restores the stock, so nothing is changed.
+    // ==========================================
+
+    public bool CanFulfillOrder(
+        List<(Product Product,
+              int Quantity,
+              BeverageCustomization? Customization)> order)
+    {
+        Dictionary<string, decimal> ingredientsBefore =
+            DataStore.Ingredients.ToDictionary(
+                ingredient => ingredient.IngredientId,
+                ingredient => ingredient.Quantity
+            );
+
+        Dictionary<string, int> productsBefore =
+            DataStore.Products.ToDictionary(
+                product => product.ProductId,
+                product => product.Stock
+            );
+
+        bool canFulfill = true;
+
+        foreach (var line in order)
+        {
+            if (!ConsumeProduct(
+                line.Product,
+                line.Quantity,
+                line.Customization))
+            {
+                canFulfill = false;
+                break;
+            }
+        }
+
+        foreach (Ingredient ingredient in DataStore.Ingredients)
+        {
+            ingredient.Quantity =
+                ingredientsBefore[ingredient.IngredientId];
+        }
+
+        foreach (Product product in DataStore.Products)
+        {
+            int used =
+                productsBefore[product.ProductId] -
+                product.Stock;
+
+            if (used > 0)
+            {
+                product.AddStock(used);
+            }
+        }
+
+        return canFulfill;
+    }
+
+    // ==========================================
+    // WHAT IS MISSING FOR A DRINK
+    // ==========================================
+    // The recipe ingredients that are too low to make even one serving.
+    // Empty when the drink can be made (or has no recipe).
+
+    public List<Ingredient> MissingIngredients(Product product)
+    {
+        Recipe? recipe = RecipeData.Recipes.FirstOrDefault(
+            r => r.Product.ProductId == product.ProductId);
+
+        if (recipe == null)
+        {
+            return new List<Ingredient>();
+        }
+
+        return recipe.Ingredients
+            .Where(line => line.Ingredient.Quantity < line.QuantityRequired)
+            .Select(line => line.Ingredient)
+            .DistinctBy(i => i.IngredientId)
+            .ToList();
+    }
+
+    // ==========================================
     // GET MILK INGREDIENT
     // ==========================================
 
@@ -328,12 +266,12 @@ public bool IsProductAvailable(
     {
         if (milkName == "Soy Milk")
         {
-            return DataStore.GetIngredient("I019");
+            return DataStore.GetIngredient("I021");
         }
 
         if (milkName == "Almond Milk")
         {
-            return DataStore.GetIngredient("I020");
+            return DataStore.GetIngredient("I019");
         }
 
         if (milkName == "Oat Milk")
@@ -369,7 +307,7 @@ public bool IsProductAvailable(
 
         if (syrupName == "Hazelnut")
         {
-            return DataStore.GetIngredient("I021");
+            return DataStore.GetIngredient("I020");
         }
 
         return null;
@@ -445,8 +383,7 @@ public bool ConsumeProduct(
         if (customization != null)
         {
             // Alternative milk
-            if (customization.Milk != "None" &&
-                customization.Milk != "Whole Milk")
+            if (customization.Milk != "None")
             {
                 Ingredient? milk =
                     GetMilkIngredient(
@@ -456,7 +393,7 @@ public bool ConsumeProduct(
                 if (milk != null)
                 {
                     milk.Quantity -=
-                        200m * quantity;
+                        0.2m * quantity;
                 }
             }
 
@@ -470,7 +407,7 @@ public bool ConsumeProduct(
                 if (espresso != null)
                 {
                     espresso.Quantity -=
-                        30m *
+                        0.03m *
                         customization.ExtraShots *
                         quantity;
                 }
@@ -488,7 +425,7 @@ public bool ConsumeProduct(
                 if (syrup != null)
                 {
                     syrup.Quantity -=
-                        15m * quantity;
+                        0.015m * quantity;
                 }
             }
         }

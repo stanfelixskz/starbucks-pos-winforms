@@ -1,135 +1,66 @@
-﻿    using POSInventorySystem;
-    using POSInventorySystem.Services;
-    using POSInventorySystem.Data;
+using POSInventorySystem.Data;
+using POSInventorySystem.UI;
 
-    // Initialize product recipes
-    RecipeData.Initialize();
+namespace POSInventorySystem;
 
-    LoginService loginService = new LoginService();
-
-    while (true)
+internal static class Program
+{
+    [STAThread]
+    private static void Main()
     {
-        Console.WriteLine();
-        Console.WriteLine("=================================");
-        Console.WriteLine("      STARBUCKS POS SYSTEM");
-        Console.WriteLine("=================================");
-        Console.WriteLine("             LOGIN");
-        Console.WriteLine("=================================");
+        ApplicationConfiguration.Initialize();
 
-        int attempts = 0;
-        bool loggedIn = false;
-
-        while (attempts < 3 && !loggedIn)
+        // Open (and on first run create) the database, then load it
+        try
         {
-            Console.Write("Username: ");
-            string? username = Console.ReadLine()?.Trim();
+            Database.Initialize();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "The database could not be opened." + Environment.NewLine +
+                Environment.NewLine +
+                ex.Message + Environment.NewLine +
+                Environment.NewLine +
+                "Make sure SQL Server LocalDB is installed.",
+                "Starbucks POS",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
 
-            if (string.IsNullOrWhiteSpace(username))
-            {
-                attempts++;
-                Console.WriteLine("Username is required.");
-                Console.WriteLine(
-                    $"Attempts remaining: {3 - attempts}"
-                );
-                Console.WriteLine();
-                continue;
-            }
-
-            if (!loginService.UserExists(username))
-            {
-                attempts++;
-                Console.WriteLine("Account not found.");
-                Console.WriteLine(
-                    $"Attempts remaining: {3 - attempts}"
-                );
-                Console.WriteLine();
-                continue;
-            }
-
-            Console.Write("Password: ");
-
-            string password = "";
-
-            while (true)
-            {
-                ConsoleKeyInfo key =
-                    Console.ReadKey(intercept: true);
-
-                if (key.Key == ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    break;
-                }
-
-                if (key.Key == ConsoleKey.Backspace)
-                {
-                    if (password.Length > 0)
-                    {
-                        password = password[..^1];
-                        Console.Write("\b \b");
-                    }
-                }
-                else if (!char.IsControl(key.KeyChar))
-                {
-                    password += key.KeyChar;
-                    Console.Write("*");
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(password))
-            {
-                attempts++;
-                Console.WriteLine("Password is required.");
-                Console.WriteLine(
-                    $"Attempts remaining: {3 - attempts}"
-                );
-                Console.WriteLine();
-                continue;
-            }
-
-            if (!loginService.Login(
-                username,
-                password,
-                out string role,
-                out string fullName))
-            {
-                attempts++;
-                Console.WriteLine("Invalid password.");
-                Console.WriteLine(
-                    $"Attempts remaining: {3 - attempts}"
-                );
-                Console.WriteLine();
-                continue;
-            }
-
-            loggedIn = true;
-
-            Console.WriteLine();
-            Console.WriteLine("Login successful!");
-            Console.WriteLine($"Welcome, {fullName}!");
-            Console.WriteLine($"Role: {role}");
-            Console.WriteLine();
-
-            if (role == "Admin")
-            {
-                AdminMenu adminMenu = new AdminMenu();
-                adminMenu.Show();
-            }
-            else if (role == "Cashier")
-            {
-                CashierMenu cashierMenu = new CashierMenu();
-                cashierMenu.Show();
-            }
-
-            Console.WriteLine();
-            Console.WriteLine("You have been logged out.");
+            return;
         }
 
-        if (!loggedIn)
+        // Initialize product recipes
+        RecipeData.Initialize();
+
+        // Sign in, work, log out - repeat until the window is closed
+        // or sign-in is cancelled.
+        while (true)
         {
-            Console.WriteLine();
-            Console.WriteLine("Too many failed login attempts.");
-            Console.WriteLine("System exiting...");
-            break;
+            using LoginForm login = new LoginForm();
+
+            if (login.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            ILogoutForm main = login.Role == "Admin"
+                ? new AdminForm(login.FullName)
+                : new CashierForm(login.FullName);
+
+            Application.Run((Form)main);
+
+            if (!main.LoggedOut)
+            {
+                return;
+            }
         }
     }
+}
+
+// Implemented by the main windows so Program knows
+// whether to return to the sign-in screen.
+public interface ILogoutForm
+{
+    bool LoggedOut { get; }
+}

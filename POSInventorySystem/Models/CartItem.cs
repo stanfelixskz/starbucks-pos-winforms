@@ -13,10 +13,19 @@ public class CartItem
     // UNIT PRICE
     // ==========================================
 
+    // Set once the sale is completed (or loaded from the database)
+    // so later price edits never change old orders.
+    private decimal? fixedUnitPrice;
+
     public decimal UnitPrice
     {
         get
         {
+            if (fixedUnitPrice.HasValue)
+            {
+                return fixedUnitPrice.Value;
+            }
+
             decimal price = Product.Price;
 
             if (Customization != null)
@@ -59,152 +68,29 @@ public class CartItem
 
 
     // ==========================================
-    // DISPLAY CART ITEM
+    // FREEZE PRICE
     // ==========================================
 
-    public void DisplayCartItem()
+    public void FreezePrice()
     {
-        Console.WriteLine(
-            $"{Product.Name} x{Quantity} = ₱{Subtotal:F2}"
-        );
+        fixedUnitPrice = UnitPrice;
+    }
+
+    public void FreezePrice(decimal unitPrice)
+    {
+        fixedUnitPrice = unitPrice;
+    }
 
 
-        // ==========================================
-        // FOOD ITEM
-        // ==========================================
+    // ==========================================
+    // ADD QUANTITY
+    // ==========================================
 
-        if (Customization == null)
+    public void AddQuantity(int amount)
+    {
+        if (Quantity + amount >= 1)
         {
-            Console.WriteLine(
-                $"  Unit Price: ₱{UnitPrice:F2}"
-            );
-
-            Console.WriteLine(
-                $"  Quantity:   {Quantity}"
-            );
-
-            Console.WriteLine(
-                $"  Subtotal:   ₱{Subtotal:F2}"
-            );
-
-            return;
+            Quantity += amount;
         }
-
-
-        // ==========================================
-        // BEVERAGE CUSTOMIZATION
-        // ==========================================
-
-        Customization.DisplayCustomization();
-
-        Console.WriteLine();
-
-        Console.WriteLine(
-            "Price Breakdown:"
-        );
-
-
-        // ==========================================
-        // BASE PRICE
-        // ==========================================
-
-        Console.WriteLine(
-            $"  {"Base Price:",-20}" +
-            $"₱{Product.Price:F2}"
-        );
-
-
-        // ==========================================
-        // SIZE PRICE
-        // ==========================================
-
-        decimal sizePrice = 0m;
-
-        if (Customization.Size == "Grande")
-        {
-            sizePrice = 10m;
-        }
-        else if (Customization.Size == "Venti")
-        {
-            sizePrice = 20m;
-        }
-
-        Console.WriteLine(
-            $"  {Customization.Size,-20}" +
-            $"+₱{sizePrice:F2}"
-        );
-
-
-        // ==========================================
-        // MILK PRICE
-        // ==========================================
-
-        decimal milkPrice = 0m;
-
-        if (Customization.Milk == "Soy Milk" ||
-            Customization.Milk == "Oat Milk" ||
-            Customization.Milk == "Almond Milk")
-        {
-            milkPrice = 20m;
-        }
-
-        Console.WriteLine(
-            $"  {Customization.Milk,-20}" +
-            $"+₱{milkPrice:F2}"
-        );
-
-
-        // ==========================================
-        // EXTRA SHOTS PRICE
-        // ==========================================
-
-        decimal shotsPrice =
-            Customization.ExtraShots * 30m;
-
-        Console.WriteLine(
-            $"  {"Extra Shots:",-20}" +
-            $"+₱{shotsPrice:F2}"
-        );
-
-
-        // ==========================================
-        // SYRUP PRICE
-        // ==========================================
-
-        decimal syrupPrice = 0m;
-
-        if (Customization.Syrup != "None")
-        {
-            syrupPrice = 15m;
-        }
-
-        Console.WriteLine(
-            $"  {Customization.Syrup + " Syrup",-20}" +
-            $"+₱{syrupPrice:F2}"
-        );
-
-
-        // ==========================================
-        // TOTAL PRICE
-        // ==========================================
-
-        Console.WriteLine(
-            "  --------------------"
-        );
-
-        Console.WriteLine(
-            $"  {"Unit Price:",-20}" +
-            $"₱{UnitPrice:F2}"
-        );
-
-        Console.WriteLine(
-            $"  {"Quantity:",-20}" +
-            $"{Quantity}"
-        );
-
-        Console.WriteLine(
-            $"  {"Subtotal:",-20}" +
-            $"₱{Subtotal:F2}"
-        );
     }
 }

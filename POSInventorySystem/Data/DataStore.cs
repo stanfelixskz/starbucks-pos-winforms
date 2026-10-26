@@ -16,7 +16,7 @@ public static class DataStore
             // ==================================
 
             new BeverageProduct(
-                "P001",
+                "P01",
                 "Caffe Latte",
                 150.00m,
                 10,
@@ -24,7 +24,7 @@ public static class DataStore
             ),
 
             new BeverageProduct(
-                "P002",
+                "P02",
                 "Caramel Macchiato",
                 170.00m,
                 8,
@@ -32,7 +32,7 @@ public static class DataStore
             ),
 
             new BeverageProduct(
-                "P003",
+                "P03",
                 "Java Chip Frappuccino",
                 180.00m,
                 7,
@@ -40,7 +40,7 @@ public static class DataStore
             ),
 
             new BeverageProduct(
-                "P004",
+                "P04",
                 "Caffe Americano",
                 135.00m,
                 10,
@@ -48,7 +48,7 @@ public static class DataStore
             ),
 
             new BeverageProduct(
-                "P005",
+                "P05",
                 "Mocha Frappuccino",
                 175.00m,
                 8,
@@ -56,7 +56,7 @@ public static class DataStore
             ),
 
             new BeverageProduct(
-                "P006",
+                "P06",
                 "Iced Caffe Latte",
                 155.00m,
                 10,
@@ -68,7 +68,7 @@ public static class DataStore
             // ==================================
 
             new FoodProduct(
-                "P007",
+                "P07",
                 "Chocolate Chip Cookie",
                 95.00m,
                 12,
@@ -76,7 +76,7 @@ public static class DataStore
             ),
 
             new FoodProduct(
-                "P008",
+                "P08",
                 "Chocolate Croissant",
                 120.00m,
                 6,
@@ -84,7 +84,7 @@ public static class DataStore
             ),
 
             new FoodProduct(
-                "P009",
+                "P09",
                 "Chicken Pesto Sandwich",
                 165.00m,
                 5,
@@ -92,7 +92,7 @@ public static class DataStore
             ),
 
             new FoodProduct(
-                "P010",
+                "P10",
                 "Sausage Roll",
                 110.00m,
                 6,
@@ -105,6 +105,7 @@ public static class DataStore
     // INGREDIENTS
     // ==========================================
 
+    // Quantities are counted in packs. Pack size is noted beside each item.
     public static List<Ingredient> Ingredients { get; } =
         new List<Ingredient>
         {
@@ -112,173 +113,247 @@ public static class DataStore
             // BEVERAGE INGREDIENTS
             // ==================================
 
+            // 1 pack = 1000 g
             new Ingredient(
                 "I001",
                 "Coffee Beans",
-                5000,
+                5,
+                1m,
                 "g",
-                1000
+                1000m,
+                5m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I002",
                 "Whole Milk",
-                10000,
+                10,
+                2m,
                 "ml",
-                2000
+                1000m,
+                10m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I003",
                 "Oat Milk",
-                5000,
+                5,
+                1m,
                 "ml",
-                1000
+                1000m,
+                5m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I004",
                 "Espresso",
-                2000,
+                2,
+                1m,
                 "ml",
-                500
+                1000m,
+                2m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I005",
                 "Caramel Sauce",
-                2000,
+                2,
+                1m,
                 "ml",
-                500
+                1000m,
+                2m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I006",
                 "Vanilla Syrup",
-                2000,
+                2,
+                1m,
                 "ml",
-                500
+                1000m,
+                2m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I007",
                 "Frappuccino Base",
-                3000,
+                3,
+                1m,
                 "ml",
-                750
+                1000m,
+                3m
             ),
 
+            // 1 pack = 5000 g
             new Ingredient(
                 "I008",
                 "Ice",
-                10000,
+                2,
+                1m,
                 "g",
-                2000
+                5000m,
+                2m
             ),
 
+            // 1 pack = 1000 g
             new Ingredient(
                 "I009",
                 "Chocolate Chips",
-                2000,
+                2,
+                1m,
                 "g",
-                500
+                1000m,
+                2m
             ),
 
+            // 1 pack = 500 ml
             new Ingredient(
                 "I010",
                 "Whipped Cream",
-                2000,
+                4,
+                1m,
                 "ml",
-                500
+                500m,
+                4m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I011",
                 "Mocha Sauce",
-                2000,
+                2,
+                1m,
                 "ml",
-                500
+                1000m,
+                2m
             ),
 
+            // 1 pack = 5000 ml
             new Ingredient(
                 "I012",
                 "Water",
-                10000,
+                2,
+                1m,
                 "ml",
-                2000
+                5000m,
+                2m
             ),
+
 
             // ==================================
             // FOOD INGREDIENTS
             // ==================================
 
+            // 1 pack = 10 pcs
             new Ingredient(
                 "I013",
                 "Bread",
-                50,
+                5,
+                1m,
                 "pcs",
-                10
+                10m,
+                5m
             ),
 
+            // 1 pack = 1000 g
             new Ingredient(
                 "I014",
                 "Chicken",
-                5000,
+                5,
+                1m,
                 "g",
-                1000
+                1000m,
+                5m
             ),
 
+            // 1 pack = 500 g
             new Ingredient(
                 "I015",
                 "Pesto",
-                2000,
+                4,
+                1m,
                 "g",
-                500
+                500m,
+                4m
             ),
 
+            // 1 pack = 500 g
             new Ingredient(
                 "I016",
                 "Cheese",
-                2000,
+                4,
+                1m,
                 "g",
-                500
+                500m,
+                4m
             ),
 
+            // 1 pack = 1000 g
             new Ingredient(
                 "I017",
                 "Sausage",
-                3000,
+                3,
+                1m,
                 "g",
-                750
+                1000m,
+                3m
             ),
 
+            // 1 pack = 10 pcs
             new Ingredient(
                 "I018",
                 "Pastry",
-                50,
+                5,
+                1m,
                 "pcs",
-                10
+                10m,
+                5m
             ),
+
 
             // ==================================
             // ADDITIONAL CUSTOMIZATION INGREDIENTS
             // ==================================
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I019",
                 "Almond Milk",
-                5000,
+                5,
+                1m,
                 "ml",
-                1000
+                1000m,
+                5m
             ),
 
+            // 1 pack = 1000 ml
             new Ingredient(
                 "I020",
                 "Hazelnut Syrup",
-                2000,
+                2,
+                1m,
                 "ml",
-                500
+                1000m,
+                2m
+            ),
+
+            // 1 pack = 1000 ml
+            new Ingredient(
+                "I021",
+                "Soy Milk",
+                5,
+                1m,
+                "ml",
+                1000m,
+                5m
             )
+
         };
 
 
@@ -322,6 +397,14 @@ public static class DataStore
 
     public static List<Transaction> Transactions { get; } =
         new List<Transaction>();
+
+
+    // ==========================================
+    // STOCK RECORDS (restocks and sale deductions)
+    // ==========================================
+
+    public static List<StockRecord> StockRecords { get; } =
+        new List<StockRecord>();
 
 
     // ==========================================

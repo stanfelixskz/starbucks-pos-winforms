@@ -427,3 +427,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Brand logo (trademarked image) - keep local, the app falls back to a text header
+POSInventorySystem/Assets/logo.*
+
