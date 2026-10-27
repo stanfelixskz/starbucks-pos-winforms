@@ -103,6 +103,18 @@ WHERE LowStockThreshold <> CEILING(LowStockThreshold)
 
 UPDATE dbo.Ingredients SET ParLevel = LowStockThreshold
 WHERE ParLevel < LowStockThreshold;"),
+
+        (6, "Drink recipes, with an amount for each size", @"
+IF OBJECT_ID(N'dbo.RecipeIngredients', N'U') IS NULL
+CREATE TABLE dbo.RecipeIngredients (
+    ProductId     NVARCHAR(10)  NOT NULL
+        REFERENCES dbo.Products(ProductId),
+    IngredientId  NVARCHAR(10)  NOT NULL
+        REFERENCES dbo.Ingredients(IngredientId),
+    Size          NVARCHAR(10)  NOT NULL,
+    Amount        DECIMAL(12,4) NOT NULL,
+    PRIMARY KEY (ProductId, IngredientId, Size)
+);"),
     };
 
     // Runs every step that has not been recorded yet, each in its own

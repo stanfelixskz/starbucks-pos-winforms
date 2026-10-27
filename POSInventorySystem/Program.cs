@@ -31,9 +31,6 @@ internal static class Program
             return;
         }
 
-        // Initialize product recipes
-        RecipeData.Initialize();
-
         // The drink options (milk, shots, syrup) point at ingredient IDs.
         // Say so now if one is missing, instead of failing at the till.
         List<string> missing = CustomizationRules.FindMissingIngredients();

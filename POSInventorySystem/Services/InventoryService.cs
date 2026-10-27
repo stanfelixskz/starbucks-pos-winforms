@@ -29,12 +29,18 @@ public class InventoryService
                 : (ingredient, amount);
         }
 
-        Recipe? recipe = RecipeData.Recipes.FirstOrDefault(
-            r => r.Product.ProductId == product.ProductId);
+        Recipe? recipe = RecipeRules.Find(product.ProductId);
+
+        // A drink with no recipe can not be made: nothing says what it uses
+        if (recipe == null && product is BeverageProduct)
+        {
+            return null;
+        }
 
         if (recipe != null)
         {
-            foreach (RecipeIngredient line in recipe.Ingredients)
+            // Each size has its own amounts (no customization means Tall)
+            foreach (RecipeIngredient line in recipe.For(customization?.Size))
             {
                 // Whole milk is part of the recipe; another milk replaces it
                 if (line.Ingredient.IngredientId == CustomizationRules.WholeMilkId &&
@@ -169,6 +175,11 @@ public class InventoryService
     }
 
 
+    // A drink is only sold when it has a recipe
+    public bool HasRecipe(Product product) =>
+        product is not BeverageProduct || RecipeRules.Find(product.ProductId) != null;
+
+
     // ==========================================
     // CHECK A WHOLE ORDER
     // ==========================================
@@ -232,20 +243,19 @@ public class InventoryService
     // ==========================================
     // WHAT IS MISSING FOR A DRINK
     // ==========================================
-    // The recipe ingredients that are too low to make even one serving.
+    // The recipe ingredients that are too low to make even one Tall.
     // Empty when the drink can be made (or has no recipe).
 
     public List<Ingredient> MissingIngredients(Product product)
     {
-        Recipe? recipe = RecipeData.Recipes.FirstOrDefault(
-            r => r.Product.ProductId == product.ProductId);
+        Recipe? recipe = RecipeRules.Find(product.ProductId);
 
         if (recipe == null)
         {
             return new List<Ingredient>();
         }
 
-        return recipe.Ingredients
+        return recipe.For(null)
             .Where(line => line.Ingredient.Quantity < line.QuantityRequired)
             .Select(line => line.Ingredient)
             .DistinctBy(i => i.IngredientId)

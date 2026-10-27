@@ -159,14 +159,10 @@ public partial class AdminForm
         availabilityButton.Font = Theme.Bold(9.5f);
         availabilityButton.Click += (_, _) => ToggleAvailabilityClicked();
 
-        recipesButton = Theme.SecondaryButton("Recipes");
+        recipesButton = Theme.SecondaryButton("Recipe");
         recipesButton.Size = new Size(110, 36);
         recipesButton.Font = Theme.Bold(9.5f);
-        recipesButton.Click += (_, _) =>
-        {
-            using RecipesDialog dialog = new RecipesDialog();
-            dialog.ShowDialog(this);
-        };
+        recipesButton.Click += (_, _) => EditRecipeClicked();
 
         receiveButton = Theme.PrimaryButton("Receive");
         receiveButton.Size = new Size(120, 36);
@@ -309,6 +305,11 @@ public partial class AdminForm
                 return "OFF";
             }
 
+            if (!inventoryService.HasRecipe(p))
+            {
+                return "OUT";
+            }
+
             return inventoryService.MissingIngredients(p).Count > 0
                 ? "OUT"
                 : "OK";
@@ -333,6 +334,11 @@ public partial class AdminForm
         if (p.Unavailable)
         {
             return "Stopped by hand";
+        }
+
+        if (!inventoryService.HasRecipe(p))
+        {
+            return "No recipe yet";
         }
 
         List<Ingredient> missing = inventoryService.MissingIngredients(p);
@@ -410,7 +416,11 @@ public partial class AdminForm
                 ProductStockText(p),
                 beverage ? "-" : $"{p.LowStockLevel} pcs",
                 status,
-                beverage && status != "OUT" ? "" : "Receive");
+                beverage && status != "OUT"
+                    ? ""
+                    : beverage && !inventoryService.HasRecipe(p)
+                        ? "Add recipe"
+                        : "Receive");
 
             Tint(productGrid.Rows[row], status);
             productGrid.Rows[row].Tag = $"Product:{p.ProductId}";
@@ -788,20 +798,23 @@ public partial class AdminForm
     // ingredients so they can be restocked in one step.
     private void RestockDrink(Product drink)
     {
-        Recipe? recipe = RecipeData.Recipes.FirstOrDefault(
-            r => r.Product.ProductId == drink.ProductId);
+        Recipe? recipe = RecipeRules.Find(drink.ProductId);
 
         if (recipe == null)
         {
+            EditRecipeFor(drink);
             return;
         }
 
-        // The ingredient(s) that run out first, plus anything already low
-        decimal fewest = recipe.Ingredients
+        // The ingredient(s) that run out first (for a Tall), plus anything
+        // already low
+        List<RecipeIngredient> tall = recipe.For(null).ToList();
+
+        decimal fewest = tall
             .Where(l => l.QuantityRequired > 0)
             .Min(l => l.Ingredient.Quantity / l.QuantityRequired);
 
-        List<Ingredient> holdingBack = recipe.Ingredients
+        List<Ingredient> holdingBack = tall
             .Where(l => l.QuantityRequired > 0 &&
                 (l.Ingredient.IsLowStock() ||
                  l.Ingredient.Quantity / l.QuantityRequired <= fewest + 0.0001m))
@@ -951,18 +964,91 @@ public partial class AdminForm
             return;
         }
 
+        // A drink can not be added without its recipe: if the recipe step is
+        // cancelled, nothing is created
+        IReadOnlyList<RecipeRow>? recipe = null;
+
+        if (dialog.IsBeverage)
+        {
+            using RecipeDialog recipeDialog =
+                new RecipeDialog(dialog.ItemName, null);
+
+            if (recipeDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            recipe = recipeDialog.Rows;
+        }
+
         if (!adminService.AddProduct(
             dialog.ItemName,
             dialog.Price,
             dialog.Stock,
             dialog.IsBeverage,
             dialog.LowStockLevel,
+            recipe,
             out string error))
         {
             MessageBox.Show(error, "Add product",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+
+        RefreshInventory();
+    }
+
+    // The Recipe button: edit the recipe of the selected drink
+    private void EditRecipeClicked()
+    {
+        string? tag = productGrid.CurrentRow?.Tag as string;
+
+        Product? product = tag == null
+            ? null
+            : DataStore.GetProduct(tag.Split(':')[1]);
+
+        if (product == null)
+        {
+            MessageBox.Show("Select a drink first.", "Recipe",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        if (product is not BeverageProduct)
+        {
+            MessageBox.Show(
+                "Food is counted in pieces, so it has no recipe.",
+                "Recipe",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        EditRecipeFor(product);
+    }
+
+    private void EditRecipeFor(Product drink)
+    {
+        Recipe? existing = RecipeRules.Find(drink.ProductId);
+
+        using RecipeDialog dialog = new RecipeDialog(
+            drink.Name,
+            existing == null ? null : RecipeRules.ToRows(existing));
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (!adminService.SaveRecipe(drink, dialog.Rows, out string error))
+        {
+            MessageBox.Show(error, "Recipe",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        inventoryStatus.Text =
+            $"Recipe saved for {drink.Name} ({DateTime.Now:hh:mm:ss tt})";
 
         RefreshInventory();
     }

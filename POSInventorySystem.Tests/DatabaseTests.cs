@@ -200,7 +200,7 @@ UPDATE dbo.Ingredients SET LowStockThreshold = 0.5, ParLevel = 2.4 WHERE Ingredi
 
         db.Restart();
 
-        Assert.Equal(5, (int)TestSupport.Scalar(db.Name, "SELECT MAX(Version) FROM dbo.SchemaVersion")!);
+        Assert.Equal(6, (int)TestSupport.Scalar(db.Name, "SELECT MAX(Version) FROM dbo.SchemaVersion")!);
         Assert.Equal(1, (int)TestSupport.Scalar(db.Name,
             "SELECT COUNT(*) FROM sys.columns " +
             "WHERE object_id = OBJECT_ID(N'dbo.Products') AND name = N'Unavailable'")!);
@@ -212,7 +212,7 @@ UPDATE dbo.Ingredients SET LowStockThreshold = 0.5, ParLevel = 2.4 WHERE Ingredi
 
         // Starting again changes nothing
         db.Restart();
-        Assert.Equal(5, (int)TestSupport.Scalar(db.Name, "SELECT COUNT(*) FROM dbo.SchemaVersion")!);
+        Assert.Equal(6, (int)TestSupport.Scalar(db.Name, "SELECT COUNT(*) FROM dbo.SchemaVersion")!);
     }
 
     [SkippableFact]

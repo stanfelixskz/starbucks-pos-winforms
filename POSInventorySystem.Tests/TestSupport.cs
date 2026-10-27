@@ -176,15 +176,13 @@ public sealed class TestDatabase : IDisposable
 
         TestSupport.RestoreSeed();
         Database.Initialize();
-        TestSupport.ReloadRecipes();
-    }
+            }
 
     // Loads the database again, like starting the app a second time
     public void Restart()
     {
         Database.Initialize();
-        TestSupport.ReloadRecipes();
-    }
+            }
 
     public void Dispose()
     {

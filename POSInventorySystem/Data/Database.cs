@@ -42,6 +42,8 @@ public static class Database
         BackfillIngredientUnits(connection);
         SeedIfEmpty(connection);
         LoadAll(connection);
+        SeedRecipesIfEmpty(connection);
+        LoadRecipes(connection);
     }
 
     private static void CreateDatabase()
@@ -107,6 +109,72 @@ public static class Database
         }
 
         transaction.Commit();
+    }
+
+    // First run (or an older database): store the starting drink recipes,
+    // built from the ingredients that were just loaded
+    private static void SeedRecipesIfEmpty(SqlConnection connection)
+    {
+        using (SqlCommand count = new SqlCommand(
+            "SELECT COUNT(*) FROM dbo.RecipeIngredients", connection))
+        {
+            if ((int)count.ExecuteScalar()! > 0)
+            {
+                return;
+            }
+        }
+
+        RecipeData.Recipes.Clear();
+        RecipeData.Initialize();
+
+        using SqlTransaction transaction = connection.BeginTransaction();
+
+        foreach (Recipe recipe in RecipeData.Recipes)
+        {
+            if (DataStore.GetProduct(recipe.Product.ProductId) != null)
+            {
+                InsertRecipeRows(
+                    connection, transaction,
+                    recipe.Product.ProductId,
+                    RecipeRules.ToRows(recipe));
+            }
+        }
+
+        transaction.Commit();
+    }
+
+    // The recipes the app uses always come from the database
+    private static void LoadRecipes(SqlConnection connection)
+    {
+        RecipeData.Recipes.Clear();
+
+        Dictionary<string, List<RecipeRow>> rows = new();
+
+        using (SqlDataReader r = Query(connection,
+            "SELECT ProductId, IngredientId, Size, Amount " +
+            "FROM dbo.RecipeIngredients ORDER BY ProductId, IngredientId, Size"))
+        {
+            while (r.Read())
+            {
+                string productId = r.GetString(0);
+
+                if (!rows.ContainsKey(productId))
+                {
+                    rows[productId] = new List<RecipeRow>();
+                }
+
+                rows[productId].Add(new RecipeRow(
+                    r.GetString(1), r.GetString(2), r.GetDecimal(3)));
+            }
+        }
+
+        foreach (Product product in DataStore.Products)
+        {
+            if (rows.TryGetValue(product.ProductId, out List<RecipeRow>? list))
+            {
+                RecipeData.Recipes.Add(RecipeRules.Build(product, list));
+            }
+        }
     }
 
     // Replaces the in-memory lists with what is saved
@@ -543,10 +611,57 @@ public static class Database
         return total;
     }
 
-    public static void AddProduct(Product product)
+    // Saves a new product. A drink's recipe is saved in the same database
+    // transaction, so a drink never exists without its recipe.
+    public static void AddProduct(
+        Product product,
+        IReadOnlyList<RecipeRow>? recipe = null)
     {
         using SqlConnection connection = Open(DatabaseName);
-        InsertProduct(connection, null, product);
+        using SqlTransaction transaction = connection.BeginTransaction();
+
+        InsertProduct(connection, transaction, product);
+
+        if (recipe != null)
+        {
+            InsertRecipeRows(connection, transaction, product.ProductId, recipe);
+        }
+
+        transaction.Commit();
+    }
+
+    // Replaces a drink's whole recipe
+    public static void SaveRecipe(string productId, IReadOnlyList<RecipeRow> recipe)
+    {
+        using SqlConnection connection = Open(DatabaseName);
+        using SqlTransaction transaction = connection.BeginTransaction();
+
+        Run(connection, transaction,
+            "DELETE FROM dbo.RecipeIngredients WHERE ProductId = @id",
+            ("@id", productId));
+
+        InsertRecipeRows(connection, transaction, productId, recipe);
+
+        transaction.Commit();
+    }
+
+    private static void InsertRecipeRows(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string productId,
+        IEnumerable<RecipeRow> rows)
+    {
+        foreach (RecipeRow row in rows)
+        {
+            Run(connection, transaction,
+                "INSERT INTO dbo.RecipeIngredients " +
+                "(ProductId, IngredientId, Size, Amount) " +
+                "VALUES (@product, @ingredient, @size, @amount)",
+                ("@product", productId),
+                ("@ingredient", row.IngredientId),
+                ("@size", row.Size),
+                ("@amount", row.Amount));
+        }
     }
 
     public static void UpdateProduct(Product product)

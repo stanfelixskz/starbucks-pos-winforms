@@ -76,7 +76,7 @@ dotnet test StarbucksPOS.slnx
 ## Database tables
 
 `Users`, `Products`, `Ingredients`, `Transactions`, `TransactionItems`, `StockRecords`.
-Recipes are defined in code (`Data/RecipeData.cs`).
+Recipes are stored in the database (`RecipeIngredients`): a drink can only be added together with its recipe, with an amount per ingredient for each size (Tall, Grande, Venti) in the ingredient's own unit. A drink without a recipe is not sold. The six starting drinks are seeded from `Data/RecipeData.cs`. Food is counted in pieces and has no recipe.
 
 ## Notes
 

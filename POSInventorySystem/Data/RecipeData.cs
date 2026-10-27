@@ -40,24 +40,6 @@ public static class RecipeData
         Ingredient? water =
             DataStore.GetIngredient("I012");
 
-        Ingredient? bread =
-            DataStore.GetIngredient("I013");
-
-        Ingredient? chicken =
-            DataStore.GetIngredient("I014");
-
-        Ingredient? pesto =
-            DataStore.GetIngredient("I015");
-
-        Ingredient? cheese =
-            DataStore.GetIngredient("I016");
-
-        Ingredient? sausage =
-            DataStore.GetIngredient("I017");
-
-        Ingredient? pastry =
-            DataStore.GetIngredient("I018");
-
 
         // ==========================================
         // P001 - CAFFE LATTE
@@ -269,94 +251,6 @@ public static class RecipeData
             recipe.AddIngredient(
                 ice,
                 0.03m
-            );
-
-            Recipes.Add(recipe);
-        }
-
-
-        // ==========================================
-        // P007 - CHOCOLATE CHIP COOKIE
-        // ==========================================
-
-        // No recipe yet.
-        // Uses finished-product stock.
-
-
-        // ==========================================
-        // P008 - CHOCOLATE CROISSANT
-        // ==========================================
-
-        // No recipe yet.
-        // Uses finished-product stock.
-
-
-        // ==========================================
-        // P009 - CHICKEN PESTO SANDWICH
-        // ==========================================
-
-        Product? chickenPesto =
-            DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P09"
-            );
-
-        if (chickenPesto != null &&
-            bread != null &&
-            chicken != null &&
-            pesto != null &&
-            cheese != null)
-        {
-            Recipe recipe =
-                new Recipe(chickenPesto);
-
-            recipe.AddIngredient(
-                bread,
-                0.2m
-            );
-
-            recipe.AddIngredient(
-                chicken,
-                0.1m
-            );
-
-            recipe.AddIngredient(
-                pesto,
-                0.04m
-            );
-
-            recipe.AddIngredient(
-                cheese,
-                0.06m
-            );
-
-            Recipes.Add(recipe);
-        }
-
-
-        // ==========================================
-        // P010 - SAUSAGE ROLL
-        // ==========================================
-
-        Product? sausageRoll =
-            DataStore.Products.FirstOrDefault(
-                p => p.ProductId == "P10"
-            );
-
-        if (sausageRoll != null &&
-            pastry != null &&
-            sausage != null)
-        {
-            Recipe recipe =
-                new Recipe(sausageRoll);
-
-            recipe.AddIngredient(
-                pastry,
-                0.1m
-            );
-
-            recipe.AddIngredient(
-                sausage,
-                0.1m
             );
 
             Recipes.Add(recipe);

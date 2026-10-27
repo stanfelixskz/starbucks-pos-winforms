@@ -30,12 +30,24 @@ public class AdminService
         return $"P{highest + 1:D2}";
     }
 
+    // Food needs no recipe (it is counted in pieces)
     public bool AddProduct(
         string name,
         decimal price,
         int stock,
         bool isBeverage,
         int lowStockLevel,
+        out string error) =>
+        AddProduct(name, price, stock, isBeverage, lowStockLevel, null, out error);
+
+    // A drink can only be added together with its recipe
+    public bool AddProduct(
+        string name,
+        decimal price,
+        int stock,
+        bool isBeverage,
+        int lowStockLevel,
+        IReadOnlyList<RecipeRow>? recipe,
         out string error)
     {
         error = "";
@@ -58,6 +70,16 @@ public class AdminService
             return false;
         }
 
+        if (isBeverage)
+        {
+            error = RecipeRules.Validate(recipe);
+
+            if (error.Length > 0)
+            {
+                return false;
+            }
+        }
+
         string id = NextProductId();
         Product? product = null;
 
@@ -75,7 +97,7 @@ public class AdminService
 
             try
             {
-                Database.AddProduct(candidate);
+                Database.AddProduct(candidate, isBeverage ? recipe : null);
                 product = candidate;
             }
             catch (Exception ex) when (Database.IsDuplicateKey(ex))
@@ -104,6 +126,48 @@ public class AdminService
         }
 
         DataStore.Products.Add(product);
+
+        if (isBeverage)
+        {
+            RecipeData.Recipes.Add(RecipeRules.Build(product, recipe!));
+        }
+
+        return true;
+    }
+
+    // Replaces a drink's recipe (all sizes)
+    public bool SaveRecipe(
+        Product product,
+        IReadOnlyList<RecipeRow> recipe,
+        out string error)
+    {
+        error = "";
+
+        if (product is not BeverageProduct)
+        {
+            error = "Only drinks have a recipe.";
+            return false;
+        }
+
+        error = RecipeRules.Validate(recipe);
+
+        if (error.Length > 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            Database.SaveRecipe(product.ProductId, recipe);
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not save the recipe: {ex.Message}";
+            return false;
+        }
+
+        RecipeData.Recipes.RemoveAll(r => r.Product.ProductId == product.ProductId);
+        RecipeData.Recipes.Add(RecipeRules.Build(product, recipe));
 
         return true;
     }
