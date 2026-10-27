@@ -40,6 +40,21 @@ public class DatabaseTests
             "SELECT Quantity FROM dbo.Ingredients WHERE IngredientId = 'I001'")!;
 
     [SkippableFact]
+    public void A_new_database_starts_from_the_starting_data_whatever_ran_before()
+    {
+        // Leave the in-memory data well away from its starting values,
+        // as other tests (or an earlier run) can
+        TestSupport.ResetData();
+        DataStore.Products.Add(new FoodProduct("P99", "Leftover", 1m, 1, "Food"));
+
+        using TestDatabase db = Start();
+
+        Assert.Equal(5m, Beans(db));
+        Assert.Equal(10, (int)TestSupport.Scalar(db.Name, "SELECT COUNT(*) FROM dbo.Products")!);
+        Assert.Equal(21, (int)TestSupport.Scalar(db.Name, "SELECT COUNT(*) FROM dbo.Ingredients")!);
+    }
+
+    [SkippableFact]
     public void A_sale_that_could_not_be_saved_is_kept_and_saved_by_the_next_save()
     {
         using TestDatabase db = Start();

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Data.SqlClient;
 using POSInventorySystem.Data;
 using POSInventorySystem.Models;
@@ -14,9 +15,84 @@ internal static class TestSupport
         @"Server=(localdb)\MSSQLLocalDB;Database=master;Integrated Security=true;" +
         "TrustServerCertificate=true;Connect Timeout=8";
 
-    // Puts the in-memory data into a known, well-stocked state
+    // ------------------------------------------------------------------
+    // The starting data, captured before any test can change it. Every test
+    // begins from a copy of this, so no test depends on which test ran
+    // before it.
+    // ------------------------------------------------------------------
+
+    private static readonly List<(string Id, string Name, decimal Quantity,
+        decimal Low, string Unit, decimal PackSize, decimal Par)> seedIngredients = new();
+
+    private static readonly List<(bool Beverage, string Id, string Name,
+        decimal Price, int Stock, string Category, int Low)> seedProducts = new();
+
+    private static readonly List<(string Username, string Password,
+        string FullName, string Role)> seedUsers = new();
+
+    [ModuleInitializer]
+    internal static void CaptureSeed()
+    {
+        foreach (Ingredient i in DataStore.Ingredients)
+        {
+            seedIngredients.Add((i.IngredientId, i.Name, i.Quantity,
+                i.LowStockThreshold, i.Unit, i.PackSize, i.ParLevel));
+        }
+
+        foreach (Product p in DataStore.Products)
+        {
+            seedProducts.Add((p is BeverageProduct, p.ProductId, p.Name,
+                p.Price, p.Stock, p.Category, p.LowStockLevel));
+        }
+
+        foreach (User u in DataStore.Users)
+        {
+            seedUsers.Add((u.Username, u.Password, u.FullName, u.Role));
+        }
+    }
+
+    // Puts every in-memory list back to the starting data
+    public static void RestoreSeed()
+    {
+        DataStore.Ingredients.Clear();
+
+        foreach (var s in seedIngredients)
+        {
+            DataStore.Ingredients.Add(new Ingredient(
+                s.Id, s.Name, s.Quantity, s.Low, s.Unit, s.PackSize, s.Par));
+        }
+
+        DataStore.Products.Clear();
+
+        foreach (var s in seedProducts)
+        {
+            Product product = s.Beverage
+                ? new BeverageProduct(s.Id, s.Name, s.Price, s.Stock, s.Category)
+                : new FoodProduct(s.Id, s.Name, s.Price, s.Stock, s.Category);
+
+            product.SetLowStockLevel(s.Low);
+            DataStore.Products.Add(product);
+        }
+
+        DataStore.Users.Clear();
+
+        foreach (var s in seedUsers)
+        {
+            DataStore.Users.Add(new User(s.Username, s.Password, s.FullName, s.Role));
+        }
+
+        DataStore.Transactions.Clear();
+        DataStore.StockRecords.Clear();
+        Transaction.SetNextNumber(1);
+
+        ReloadRecipes();
+    }
+
+    // The starting data, then a well-stocked shop (100 of everything)
     public static void ResetData()
     {
+        RestoreSeed();
+
         foreach (Ingredient i in DataStore.Ingredients)
         {
             i.Quantity = 100m;
@@ -25,13 +101,7 @@ internal static class TestSupport
         foreach (Product p in DataStore.Products)
         {
             p.SetStock(50);
-            p.SetUnavailable(false);
         }
-
-        DataStore.Transactions.Clear();
-        DataStore.StockRecords.Clear();
-
-        ReloadRecipes();
     }
 
     // Recipes hold the ingredient objects, so they must be rebuilt whenever
@@ -89,8 +159,9 @@ internal static class TestSupport
 }
 
 
-// A throw-away database for one test class. It has its own name, so the
-// real StarbucksPOS database is never touched.
+// A throw-away database for one test. It has its own name, so the real
+// StarbucksPOS database is never touched, and it always starts from the
+// app's starting data, whatever ran before.
 public sealed class TestDatabase : IDisposable
 {
     public string Name { get; } =
@@ -103,6 +174,7 @@ public sealed class TestDatabase : IDisposable
         previousName = Database.DatabaseName;
         Database.DatabaseName = Name;
 
+        TestSupport.RestoreSeed();
         Database.Initialize();
         TestSupport.ReloadRecipes();
     }
@@ -129,5 +201,8 @@ public sealed class TestDatabase : IDisposable
         {
             // best effort
         }
+
+        // leave the app's data as it started for whatever runs next
+        TestSupport.RestoreSeed();
     }
 }
