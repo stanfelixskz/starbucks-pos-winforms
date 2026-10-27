@@ -82,3 +82,12 @@ Recipes are stored in the database (`RecipeIngredients`): a drink can only be ad
 
 - `Assets/logo.png` (or `logo.jpg`) is optional. If it is missing, the screens show a text header.
   The logo is not included in this repository.
+
+## Database connection
+
+The app uses SQL Server LocalDB, instance `(localdb)\MSSQLLocalDB`, by default. To use another instance or server, set the `STARBUCKSPOS_SERVER` environment variable and start the app again:
+
+    setx STARBUCKSPOS_SERVER "(localdb)\OtherName"
+
+If the database can not be opened at startup, the error window shows the exact `sqllocaldb` commands to fix it. Startup waits up to 60 seconds (LocalDB can be slow to start the first time); saves while working give up after 10 seconds. Saves run in the background behind a small "Saving..." box, and a sale that can not be saved is kept and saved with the next one.
+

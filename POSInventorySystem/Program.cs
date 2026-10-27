@@ -19,11 +19,7 @@ internal static class Program
         catch (Exception ex)
         {
             MessageBox.Show(
-                "The database could not be opened." + Environment.NewLine +
-                Environment.NewLine +
-                ex.Message + Environment.NewLine +
-                Environment.NewLine +
-                "Make sure SQL Server LocalDB is installed.",
+                StartupHelp.Describe(Database.ServerName, ex),
                 "Starbucks POS",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);

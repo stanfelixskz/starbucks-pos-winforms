@@ -11,16 +11,38 @@ public static class Database
     // The database name can be changed (the tests use their own copy)
     public static string DatabaseName { get; set; } = "StarbucksPOS";
 
-    private const string Server = @"(localdb)\MSSQLLocalDB";
+    // The environment variable that picks another SQL Server / LocalDB
+    public const string ServerVariable = "STARBUCKSPOS_SERVER";
+    public const string DefaultServer = @"(localdb)\MSSQLLocalDB";
 
-    private static string Connect(string database) =>
-        $"Server={Server};Database={database};" +
-        "Integrated Security=true;TrustServerCertificate=true;" +
-        "Connect Timeout=60";
+    // Where the database lives: the environment variable if it is set,
+    // otherwise the default LocalDB instance
+    public static string ServerName { get; set; } = ServerFromEnvironment();
 
-    private static SqlConnection Open(string database)
+    public static string ServerFromEnvironment()
     {
-        SqlConnection connection = new SqlConnection(Connect(database));
+        string? value = Environment.GetEnvironmentVariable(ServerVariable);
+
+        return string.IsNullOrWhiteSpace(value) ? DefaultServer : value.Trim();
+    }
+
+    // Starting LocalDB for the first time can take a while, so startup is
+    // patient. A save during normal work is not: if the database can not be
+    // reached the cashier should hear about it quickly (the sale is kept).
+    public const int StartupTimeoutSeconds = 60;
+    public const int SaveTimeoutSeconds = 10;
+
+    public static string ConnectionString(string database, int timeoutSeconds) =>
+        $"Server={ServerName};Database={database};" +
+        "Integrated Security=true;TrustServerCertificate=true;" +
+        $"Connect Timeout={timeoutSeconds}";
+
+    private static SqlConnection Open(
+        string database,
+        int timeoutSeconds = SaveTimeoutSeconds)
+    {
+        SqlConnection connection = new SqlConnection(
+            ConnectionString(database, timeoutSeconds));
         connection.Open();
         return connection;
     }
@@ -36,7 +58,7 @@ public static class Database
     {
         CreateDatabase();
 
-        using SqlConnection connection = Open(DatabaseName);
+        using SqlConnection connection = Open(DatabaseName, StartupTimeoutSeconds);
 
         Schema.Apply(connection);
         BackfillIngredientUnits(connection);
@@ -49,7 +71,7 @@ public static class Database
     private static void CreateDatabase()
     {
         // The first connection also starts LocalDB, which can take a moment
-        using SqlConnection connection = Open("master");
+        using SqlConnection connection = Open("master", StartupTimeoutSeconds);
 
         Run(connection, null,
             $"IF DB_ID(N'{DatabaseName}') IS NULL " +

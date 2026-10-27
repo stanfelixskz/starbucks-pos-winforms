@@ -599,7 +599,7 @@ public class CashierForm : Form, ILogoutForm
 
         try
         {
-            Database.SaveSale(transaction);
+            Busy.Run(this, () => Database.SaveSale(transaction));
         }
         catch (Exception ex)
         {
@@ -639,7 +639,7 @@ public class CashierForm : Form, ILogoutForm
         {
             try
             {
-                Database.SaveInventory();
+                Busy.Run(this, () => Database.SaveInventory());
             }
             catch (Exception)
             {

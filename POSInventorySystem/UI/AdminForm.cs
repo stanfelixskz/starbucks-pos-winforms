@@ -371,11 +371,13 @@ public partial class AdminForm : Form, ILogoutForm
                 return;
             }
 
-            if (!loginService.Register(
+            string error = "";
+
+            if (!Busy.Run(this, () => loginService.Register(
                 username.Text.Trim(),
                 password.Text,
                 fullName.Text,
-                out string error))
+                out error)))
             {
                 message.ForeColor = Theme.Danger;
                 message.Text = error;

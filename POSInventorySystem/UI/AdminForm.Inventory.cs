@@ -641,9 +641,10 @@ public partial class AdminForm
                 switch (action)
                 {
                     case StockAction.Receive:
-                        decimal added = adminService.RestockIngredient(
-                            ingredient, dialog.Unit, dialog.Count,
-                            dialog.PacksPerBox, dialog.Note);
+                        decimal added = Busy.Run(this, () =>
+                            adminService.RestockIngredient(
+                                ingredient, dialog.Unit, dialog.Count,
+                                dialog.PacksPerBox, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Received {ingredient.Name}: +{added:0} packs " +
@@ -651,17 +652,17 @@ public partial class AdminForm
                         break;
 
                     case StockAction.Waste:
-                        adminService.WasteIngredient(
+                        Busy.Run(this, () => adminService.WasteIngredient(
                             ingredient, dialog.Unit, dialog.Count,
-                            dialog.PacksPerBox, dialog.Reason, dialog.Note);
+                            dialog.PacksPerBox, dialog.Reason, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Waste recorded for {ingredient.Name} ({DateTime.Now:hh:mm:ss tt})";
                         break;
 
                     default:
-                        adminService.AdjustIngredient(
-                            ingredient, dialog.Count, dialog.Reason, dialog.Note);
+                        Busy.Run(this, () => adminService.AdjustIngredient(
+                            ingredient, dialog.Count, dialog.Reason, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Count saved for {ingredient.Name} ({DateTime.Now:hh:mm:ss tt})";
@@ -718,7 +719,8 @@ public partial class AdminForm
                 switch (action)
                 {
                     case StockAction.Receive:
-                        adminService.RestockProduct(product, dialog.Count, dialog.Note);
+                        Busy.Run(this, () => adminService.RestockProduct(
+                            product, dialog.Count, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Received {product.Name}: +{dialog.Count} pcs " +
@@ -726,16 +728,16 @@ public partial class AdminForm
                         break;
 
                     case StockAction.Waste:
-                        adminService.WasteProduct(
-                            product, dialog.Count, dialog.Reason, dialog.Note);
+                        Busy.Run(this, () => adminService.WasteProduct(
+                            product, dialog.Count, dialog.Reason, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Waste recorded for {product.Name} ({DateTime.Now:hh:mm:ss tt})";
                         break;
 
                     default:
-                        adminService.AdjustProduct(
-                            product, dialog.Count, dialog.Reason, dialog.Note);
+                        Busy.Run(this, () => adminService.AdjustProduct(
+                            product, dialog.Count, dialog.Reason, dialog.Note));
 
                         inventoryStatus.Text =
                             $"Count saved for {product.Name} ({DateTime.Now:hh:mm:ss tt})";
@@ -780,7 +782,10 @@ public partial class AdminForm
             return;
         }
 
-        if (!adminService.SetUnavailable(product, !product.Unavailable, out string error))
+        string error = "";
+
+        if (!Busy.Run(this, () =>
+            adminService.SetUnavailable(product, !product.Unavailable, out error)))
         {
             MessageBox.Show(error, "Availability",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -837,8 +842,8 @@ public partial class AdminForm
 
             foreach (var (ingredient, packs) in dialog.Received)
             {
-                adminService.RestockIngredient(
-                    ingredient, "pack", packs, 1, $"For {drink.Name}");
+                Busy.Run(this, () => adminService.RestockIngredient(
+                    ingredient, "pack", packs, 1, $"For {drink.Name}"));
 
                 count++;
             }
@@ -897,14 +902,16 @@ public partial class AdminForm
             return;
         }
 
-        if (!adminService.AddIngredient(
+        string error = "";
+
+        if (!Busy.Run(this, () => adminService.AddIngredient(
             dialog.ItemName,
             dialog.Unit,
             dialog.PackSize,
             dialog.LowAt,
             dialog.Par,
             dialog.StartingPacks,
-            out string error))
+            out error)))
         {
             MessageBox.Show(error, "Add ingredient",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -937,14 +944,16 @@ public partial class AdminForm
             return;
         }
 
-        if (!adminService.UpdateIngredient(
+        string error = "";
+
+        if (!Busy.Run(this, () => adminService.UpdateIngredient(
             ingredient,
             dialog.ItemName,
             dialog.Unit,
             dialog.PackSize,
             dialog.LowAt,
             dialog.Par,
-            out string error))
+            out error)))
         {
             MessageBox.Show(error, "Edit ingredient",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -981,14 +990,16 @@ public partial class AdminForm
             recipe = recipeDialog.Rows;
         }
 
-        if (!adminService.AddProduct(
+        string error = "";
+
+        if (!Busy.Run(this, () => adminService.AddProduct(
             dialog.ItemName,
             dialog.Price,
             dialog.Stock,
             dialog.IsBeverage,
             dialog.LowStockLevel,
             recipe,
-            out string error))
+            out error)))
         {
             MessageBox.Show(error, "Add product",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -1040,7 +1051,9 @@ public partial class AdminForm
             return;
         }
 
-        if (!adminService.SaveRecipe(drink, dialog.Rows, out string error))
+        string error = "";
+
+        if (!Busy.Run(this, () => adminService.SaveRecipe(drink, dialog.Rows, out error)))
         {
             MessageBox.Show(error, "Recipe",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -1076,12 +1089,14 @@ public partial class AdminForm
             return;
         }
 
-        if (!adminService.UpdateProduct(
+        string error = "";
+
+        if (!Busy.Run(this, () => adminService.UpdateProduct(
             product,
             dialog.ItemName,
             dialog.Price,
             dialog.LowStockLevel,
-            out string error))
+            out error)))
         {
             MessageBox.Show(error, "Edit product",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);

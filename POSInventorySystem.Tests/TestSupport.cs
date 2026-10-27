@@ -11,8 +11,9 @@ namespace POSInventorySystem.Tests;
 
 internal static class TestSupport
 {
-    public const string MasterConnection =
-        @"Server=(localdb)\MSSQLLocalDB;Database=master;Integrated Security=true;" +
+    // Follows the same server setting as the app
+    public static string MasterConnection =>
+        $"Server={Database.ServerName};Database=master;Integrated Security=true;" +
         "TrustServerCertificate=true;Connect Timeout=8";
 
     // ------------------------------------------------------------------
