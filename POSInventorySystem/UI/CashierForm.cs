@@ -649,7 +649,8 @@ public class CashierForm : Form, ILogoutForm
             if (Database.PendingSaleCount > 0 &&
                 MessageBox.Show(
                     $"{Database.PendingSaleCount} sale(s) are not saved to the " +
-                    "database yet. If you close now they will be lost.\n\n" +
+                    "database yet. They are kept on this computer and saved the " +
+                    "next time the app starts and can reach the database.\n\n" +
                     "Close anyway?",
                     "Unsaved sales",
                     MessageBoxButtons.YesNo,

@@ -91,3 +91,7 @@ The app uses SQL Server LocalDB, instance `(localdb)\MSSQLLocalDB`, by default. 
 
 If the database can not be opened at startup, the error window shows the exact `sqllocaldb` commands to fix it. Startup waits up to 60 seconds (LocalDB can be slow to start the first time); saves while working give up after 10 seconds. Saves run in the background behind a small "Saving..." box, and a sale that can not be saved is kept and saved with the next one.
 
+## Sales that could not be saved
+
+A finished sale that can not be saved to the database is kept in `%LocalAppData%\StarbucksPOS\pending-sales-StarbucksPOS.json` (written to a temporary file and renamed, so a crash never leaves half a file). The next start loads it back, applies its stock change again and saves the sale and its stock together in one database transaction, then removes it from the file. A sale that is already in the database is not saved or deducted twice. A file that can not be read is kept next to the original with `.unreadable-<time>` added to its name, and the app warns about it at startup.
+

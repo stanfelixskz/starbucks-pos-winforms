@@ -34,6 +34,11 @@ internal static class TestSupport
     [ModuleInitializer]
     internal static void CaptureSeed()
     {
+        // Waiting sales are written to a file; tests must never touch the
+        // real one in %LocalAppData%
+        Database.PendingFolder = Path.Combine(
+            Path.GetTempPath(), "StarbucksPOS_tests_" + Environment.ProcessId);
+
         foreach (Ingredient i in DataStore.Ingredients)
         {
             seedIngredients.Add((i.IngredientId, i.Name, i.Quantity,
@@ -177,16 +182,30 @@ public sealed class TestDatabase : IDisposable
 
         TestSupport.RestoreSeed();
         Database.Initialize();
-            }
+    }
 
     // Loads the database again, like starting the app a second time
     public void Restart()
     {
         Database.Initialize();
-            }
+    }
 
     public void Dispose()
     {
+        // The waiting-sales file belongs to this throw-away database
+        try
+        {
+            foreach (string file in Directory.GetFiles(
+                         Database.PendingFolder, $"pending-sales-{Name}.json*"))
+            {
+                File.Delete(file);
+            }
+        }
+        catch (Exception)
+        {
+            // best effort
+        }
+
         Database.DatabaseName = previousName;
         SqlConnection.ClearAllPools();
 

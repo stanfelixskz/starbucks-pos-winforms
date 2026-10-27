@@ -27,6 +27,30 @@ internal static class Program
             return;
         }
 
+        // Sales left over from the last run (the app stopped before they
+        // were saved) are saved now; if the database says no, they stay in
+        // the file and are tried again with the next save
+        if (Database.PendingSaleCount > 0)
+        {
+            try
+            {
+                Database.SaveInventory();
+            }
+            catch (Exception)
+            {
+                // kept; the cashier window warns again when it closes
+            }
+        }
+
+        if (Database.PendingFileProblem != null)
+        {
+            MessageBox.Show(
+                Database.PendingFileProblem,
+                "Starbucks POS",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
         // The drink options (milk, shots, syrup) point at ingredient IDs.
         // Say so now if one is missing, instead of failing at the till.
         List<string> missing = CustomizationRules.FindMissingIngredients();

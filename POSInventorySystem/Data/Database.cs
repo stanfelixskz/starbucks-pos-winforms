@@ -66,6 +66,7 @@ public static class Database
         LoadAll(connection);
         SeedRecipesIfEmpty(connection);
         LoadRecipes(connection);
+        LoadPendingSales(connection);
     }
 
     private static void CreateDatabase()
@@ -358,6 +359,23 @@ public static class Database
 
     public static int PendingSaleCount => pendingSales.Count;
 
+    // The waiting sales are also kept in a file, so they survive a crash or
+    // closing the app. The folder can be changed (the tests use their own).
+    public static string PendingFolder { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "StarbucksPOS");
+
+    public static string PendingFilePath =>
+        Path.Combine(PendingFolder, $"pending-sales-{DatabaseName}.json");
+
+    // Set when the file of waiting sales (or part of it) could not be read
+    // at startup; the original is kept next to it
+    public static string? PendingFileProblem { get; private set; }
+
+    // Set when the file could not be written; the sales are still queued in
+    // memory and are saved to the database as usual
+    public static string? PendingFileWriteError { get; private set; }
+
     // The stock last saved for each item. Only items that differ are
     // written, and as an addition, so a change made by another terminal is
     // not overwritten.
@@ -391,62 +409,82 @@ public static class Database
             pendingSales.Add(sale);
         }
 
+        // Written before the database is tried, so the sale is not lost if
+        // the app stops in the middle of saving
+        WritePendingFile();
+
         SaveInventory();
     }
 
-    // Saves every queued sale. A sale leaves the queue only after its
-    // database transaction has committed.
-    public static void FlushPendingSales()
-    {
-        foreach (Transaction sale in pendingSales.ToList())
-        {
-            InsertSale(sale);
-            pendingSales.Remove(sale);
-        }
-    }
-
-    // Saves queued sales, then the stock changes and any new stock records.
-    // Used after a sale or a restock. If a save fails, the same changes are
-    // sent again by the next one.
+    // Saves the queued sales, the stock changes and any new stock records in
+    // ONE database transaction. That is what keeps stock exact: a sale is in
+    // the database only together with its stock change, so after a crash
+    // "the sale is saved" means "its stock is deducted". If the save fails,
+    // everything is sent again by the next one.
     public static void SaveInventory()
     {
-        FlushPendingSales();
+        List<Transaction> saving = pendingSales.ToList();
 
-        using SqlConnection connection = Open(DatabaseName);
-        using SqlTransaction transaction = connection.BeginTransaction();
+        try
+        {
+            using SqlConnection connection = Open(DatabaseName);
+            using SqlTransaction transaction = connection.BeginTransaction();
 
-        int records = SyncInventory(connection, transaction);
+            foreach (Transaction sale in saving)
+            {
+                InsertSale(connection, transaction, sale);
+            }
 
-        transaction.Commit();
-        savedStockRecords = records;
-        RememberSavedStock();
+            int records = SyncInventory(connection, transaction);
+
+            transaction.Commit();
+            savedStockRecords = records;
+            RememberSavedStock();
+        }
+        catch (Exception)
+        {
+            // A sale may have been given a new order number: keep the file
+            // in step, then let the caller see the error
+            WritePendingFile();
+            throw;
+        }
+
+        foreach (Transaction sale in saving)
+        {
+            pendingSales.Remove(sale);
+        }
+
+        WritePendingFile();
     }
 
     // Saves one sale. If another terminal already used its order number,
     // the sale is given the next free number first.
-    private static void InsertSale(Transaction sale)
+    private static void InsertSale(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        Transaction sale)
     {
         for (int attempt = 0; attempt < 5; attempt++)
         {
             try
             {
-                InsertSaleOnce(sale);
+                InsertSaleOnce(connection, transaction, sale);
                 return;
             }
             catch (SqlException ex) when (IsDuplicateKey(ex))
             {
-                using SqlConnection connection = Open(DatabaseName);
-
-                // The very same sale is already there (the answer to an
-                // earlier attempt was lost): nothing more to do
-                if (SaleAlreadySaved(connection, sale))
+                // The very same sale is already there (an earlier save went
+                // through but its answer was lost): do not save it twice,
+                // and do not deduct its stock a second time either
+                if (SaleAlreadySaved(connection, transaction, sale))
                 {
+                    TreatAsSaved(sale);
                     return;
                 }
 
                 // Someone else owns this number: take the next free one
                 string oldId = sale.TransactionId;
-                int next = NextTransactionNumber(connection);
+                int next = NextTransactionNumber(connection, transaction);
 
                 sale.AssignId($"T{next:D2}");
                 Transaction.SetNextNumber(next + 1);
@@ -468,11 +506,11 @@ public static class Database
             "Could not find a free order number for the sale.");
     }
 
-    private static void InsertSaleOnce(Transaction sale)
+    private static void InsertSaleOnce(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        Transaction sale)
     {
-        using SqlConnection connection = Open(DatabaseName);
-        using SqlTransaction transaction = connection.BeginTransaction();
-
         decimal? cash = (sale.Payment as CashPayment)?.CashReceived;
 
         Run(connection, transaction,
@@ -505,20 +543,198 @@ public static class Database
                 ("@shots", c?.ExtraShots),
                 ("@syrup", c?.Syrup));
         }
-
-        transaction.Commit();
     }
 
-    private static bool SaleAlreadySaved(SqlConnection connection, Transaction sale)
+    // The sale and its stock change are already in the database. Its stock
+    // records move to the "saved" part of the log and the saved-stock
+    // baseline takes its change into account, so the next stock sync does
+    // not send it again.
+    private static void TreatAsSaved(Transaction sale)
+    {
+        List<StockRecord> records = DataStore.StockRecords
+            .Skip(savedStockRecords)
+            .Where(r => r.Type == "SALE" && r.Reference == sale.TransactionId)
+            .ToList();
+
+        foreach (StockRecord record in records)
+        {
+            if (record.Unit == "pc")
+            {
+                if (savedProductStock.ContainsKey(record.ItemId))
+                {
+                    savedProductStock[record.ItemId] += (int)record.StockChange;
+                }
+            }
+            else if (savedIngredientStock.ContainsKey(record.ItemId))
+            {
+                savedIngredientStock[record.ItemId] += record.StockChange;
+            }
+
+            DataStore.StockRecords.Remove(record);
+            DataStore.StockRecords.Insert(savedStockRecords, record);
+            savedStockRecords++;
+        }
+    }
+
+    // ==========================================
+    // WAITING SALES FILE
+    // ==========================================
+
+    // Writes the queue to the file (an empty queue removes it). Failing to
+    // write must never stop a sale, so a problem is only noted.
+    private static void WritePendingFile()
+    {
+        try
+        {
+            List<(Transaction, List<StockRecord>)> entries = pendingSales
+                .Select(sale => (sale, DataStore.StockRecords
+                    .Skip(savedStockRecords)
+                    .Where(r => r.Type == "SALE" &&
+                                r.Reference == sale.TransactionId)
+                    .ToList()))
+                .ToList();
+
+            PendingSaleFile.Write(PendingFilePath, entries);
+            PendingFileWriteError = null;
+        }
+        catch (Exception ex)
+        {
+            PendingFileWriteError = ex.Message;
+        }
+    }
+
+    // At startup: waiting sales from the last run go back into the queue,
+    // with their stock change applied again (it never reached the database),
+    // so the next save writes both. A sale that is already in the database
+    // (the app stopped after saving, before the file was cleaned up) is left
+    // out: its stock is in the database too.
+    private static void LoadPendingSales(SqlConnection connection)
+    {
+        pendingSales.Clear();
+        PendingFileProblem = null;
+
+        string path = PendingFilePath;
+        PendingSaleFile.ReadResult? result;
+
+        try
+        {
+            result = PendingSaleFile.Read(path);
+        }
+        catch (Exception ex)
+        {
+            string kept = KeepCopy(path, move: true);
+
+            PendingFileProblem =
+                "The file of waiting sales could not be read, so those " +
+                "sales could not be restored (" + ex.Message + ")." +
+                Environment.NewLine + "The file was kept as: " + kept;
+
+            return;
+        }
+
+        if (result == null)
+        {
+            return;
+        }
+
+        if (result.Unreadable > 0)
+        {
+            string kept = KeepCopy(path, move: false);
+
+            PendingFileProblem =
+                $"{result.Unreadable} waiting sale(s) could not be read and " +
+                "were skipped." + Environment.NewLine +
+                "The original file was kept as: " + kept;
+        }
+
+        foreach (var (sale, stock) in result.Sales)
+        {
+            if (SaleAlreadySaved(connection, null, sale))
+            {
+                continue;
+            }
+
+            foreach (StockRecord record in stock)
+            {
+                if (record.Unit == "pc")
+                {
+                    Product? product = DataStore.GetProduct(record.ItemId);
+                    product?.SetStock(product.Stock + (int)record.StockChange);
+                }
+                else
+                {
+                    Ingredient? ingredient = DataStore.GetIngredient(record.ItemId);
+
+                    if (ingredient != null)
+                    {
+                        ingredient.Quantity += record.StockChange;
+                    }
+                }
+
+                DataStore.StockRecords.Add(record);
+            }
+
+            DataStore.Transactions.Add(sale);
+            pendingSales.Add(sale);
+        }
+
+        // New orders must not reuse a waiting order's number
+        int highest = DataStore.Transactions
+            .Select(t => t.TransactionId)
+            .Where(id => id.Length > 1 && int.TryParse(id.AsSpan(1), out _))
+            .Select(id => int.Parse(id.AsSpan(1)))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        Transaction.SetNextNumber(highest + 1);
+
+        WritePendingFile();
+    }
+
+    // A copy of the file that is not overwritten later
+    private static string KeepCopy(string path, bool move)
+    {
+        string kept = $"{path}.unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+        try
+        {
+            if (move)
+            {
+                File.Move(path, kept, overwrite: true);
+            }
+            else
+            {
+                File.Copy(path, kept, overwrite: true);
+            }
+        }
+        catch (Exception)
+        {
+            return path;
+        }
+
+        return kept;
+    }
+
+    private static bool SaleAlreadySaved(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        Transaction sale)
     {
         using SqlCommand command = new SqlCommand(
             "SELECT COUNT(*) FROM dbo.Transactions " +
-            "WHERE TransactionId = @id AND OrderedAt = @ordered " +
+            "WHERE TransactionId = @id " +
+            "AND OrderedAt BETWEEN DATEADD(MILLISECOND, -10, @ordered) " +
+            "AND DATEADD(MILLISECOND, 10, @ordered) " +
             "AND CashierName = @cashier AND Total = @total",
-            connection);
+            connection,
+            transaction);
 
         command.Parameters.AddWithValue("@id", sale.TransactionId);
-        command.Parameters.AddWithValue("@ordered", sale.Date);
+
+        // The time was stored with the precision of the older datetime type,
+        // so it is compared as datetime2 within a few milliseconds
+        command.Parameters.Add("@ordered", System.Data.SqlDbType.DateTime2).Value =
+            sale.Date;
         command.Parameters.AddWithValue("@cashier", sale.CashierName);
         command.Parameters.AddWithValue("@total", sale.Total);
 
@@ -526,13 +742,16 @@ public static class Database
     }
 
     // The next free order number according to the database
-    private static int NextTransactionNumber(SqlConnection connection)
+    private static int NextTransactionNumber(
+        SqlConnection connection,
+        SqlTransaction? transaction)
     {
         using SqlCommand command = new SqlCommand(
             "SELECT ISNULL(MAX(CAST(SUBSTRING(TransactionId, 2, 9) AS INT)), 0) + 1 " +
             "FROM dbo.Transactions " +
             "WHERE ISNUMERIC(SUBSTRING(TransactionId, 2, 9)) = 1",
-            connection);
+            connection,
+            transaction);
 
         return (int)command.ExecuteScalar()!;
     }
