@@ -5,174 +5,169 @@ namespace POSInventorySystem.Services;
 
 public class InventoryService
 {
+    // ==========================================
+    // WHAT AN ORDER LINE USES UP
+    // ==========================================
+    // The one place that works out which ingredients a drink needs:
+    // the recipe, plus milk, extra shots and syrup. The availability
+    // check and the deduction both use it, so they can never disagree.
+    // Returns null when an option points at an ingredient that does not
+    // exist (the drink can not be made).
+
+    public List<(Ingredient Ingredient, decimal Amount)>? RequiredIngredients(
+        Product product,
+        int quantity,
+        BeverageCustomization? customization)
+    {
+        Dictionary<string, (Ingredient Ingredient, decimal Amount)> needs = new();
+
+        void Need(Ingredient ingredient, decimal amount)
+        {
+            needs[ingredient.IngredientId] = needs.TryGetValue(
+                ingredient.IngredientId, out var existing)
+                ? (ingredient, existing.Amount + amount)
+                : (ingredient, amount);
+        }
+
+        Recipe? recipe = RecipeData.Recipes.FirstOrDefault(
+            r => r.Product.ProductId == product.ProductId);
+
+        if (recipe != null)
+        {
+            foreach (RecipeIngredient line in recipe.Ingredients)
+            {
+                // Whole milk is part of the recipe; another milk replaces it
+                if (line.Ingredient.IngredientId == CustomizationRules.WholeMilkId &&
+                    customization != null &&
+                    customization.Milk != "Whole Milk")
+                {
+                    continue;
+                }
+
+                Need(line.Ingredient, line.QuantityRequired * quantity);
+            }
+        }
+
+        if (customization == null)
+        {
+            return needs.Values.ToList();
+        }
+
+        if (customization.Milk != "None")
+        {
+            Ingredient? milk = Find(CustomizationRules.Milks, customization.Milk);
+
+            if (milk == null)
+            {
+                return null;
+            }
+
+            Need(milk, CustomizationRules.MilkPacksPerServing * quantity);
+        }
+
+        if (customization.ExtraShots > 0)
+        {
+            Ingredient? espresso =
+                DataStore.GetIngredient(CustomizationRules.EspressoId);
+
+            if (espresso == null)
+            {
+                return null;
+            }
+
+            Need(espresso,
+                CustomizationRules.EspressoPacksPerShot *
+                customization.ExtraShots *
+                quantity);
+        }
+
+        if (customization.Syrup != "None")
+        {
+            Ingredient? syrup = Find(CustomizationRules.Syrups, customization.Syrup);
+
+            if (syrup == null)
+            {
+                return null;
+            }
+
+            Need(syrup, CustomizationRules.SyrupPacksPerServing * quantity);
+        }
+
+        return needs.Values.ToList();
+    }
+
+    private static Ingredient? Find(
+        IReadOnlyDictionary<string, string> options,
+        string option) =>
+        options.TryGetValue(option, out string? id)
+            ? DataStore.GetIngredient(id)
+            : null;
 
 
     // ==========================================
     // CHECK PRODUCT AVAILABILITY
     // ==========================================
 
-public bool IsProductAvailable(
-    Product product,
-    int quantity,
-    BeverageCustomization? customization = null)
-{
-    if (quantity <= 0)
+    public bool IsProductAvailable(
+        Product product,
+        int quantity,
+        BeverageCustomization? customization = null)
     {
-        return false;
-    }
-
-    // Switched off by hand
-    if (product.Unavailable)
-    {
-        return false;
-    }
-
-    // ==========================================
-    // BEVERAGES
-    // ==========================================
-    // Beverages are made to order.
-    // Their availability depends on their
-    // recipe ingredients and customizations.
-    // ==========================================
-
-    if (product is BeverageProduct)
-    {
-        Recipe? recipe =
-            RecipeData.Recipes.FirstOrDefault(
-                r => r.Product.ProductId ==
-                     product.ProductId
-            );
-
-        if (recipe == null)
+        if (quantity <= 0)
         {
-            return true;
+            return false;
         }
 
-        // Check base recipe ingredients
-        foreach (RecipeIngredient recipeIngredient
-                 in recipe.Ingredients)
+        // Switched off by hand
+        if (product.Unavailable)
         {
-            // Skip Whole Milk when another milk
-            // has been selected.
-            if (recipeIngredient.Ingredient.IngredientId == "I002" &&
-                customization != null &&
-                customization.Milk != "Whole Milk")
-            {
-                continue;
-            }
-
-            decimal requiredAmount =
-                recipeIngredient.QuantityRequired *
-                quantity;
-
-            if (recipeIngredient.Ingredient.Quantity <
-                requiredAmount)
-            {
-                return false;
-            }
+            return false;
         }
 
-        // Check customized ingredients
-        if (customization != null)
+        // Drinks are made to order: they are available when every
+        // ingredient they need is in stock
+        if (product is BeverageProduct)
         {
-            // ------------------------------
-            // Alternative Milk
-            // ------------------------------
+            var needs = RequiredIngredients(product, quantity, customization);
 
-            if (customization.Milk != "None")
-            {
-                Ingredient? milk =
-                    GetMilkIngredient(
-                        customization.Milk
-                    );
-
-                if (milk == null)
-                {
-                    return false;
-                }
-
-                decimal requiredMilk =
-                    0.2m * quantity;
-
-                if (milk.Quantity < requiredMilk)
-                {
-                    return false;
-                }
-            }
-
-            // ------------------------------
-            // Extra Espresso Shots
-            // ------------------------------
-
-            if (customization.ExtraShots > 0)
-            {
-                Ingredient? espresso =
-                    DataStore.GetIngredient("I004");
-
-                if (espresso == null)
-                {
-                    return false;
-                }
-
-                decimal requiredEspresso =
-                    0.03m *
-                    customization.ExtraShots *
-                    quantity;
-
-                if (espresso.Quantity <
-                    requiredEspresso)
-                {
-                    return false;
-                }
-            }
-
-            // ------------------------------
-            // Syrup
-            // ------------------------------
-
-            if (customization.Syrup != "None")
-            {
-                Ingredient? syrup =
-                    GetSyrupIngredient(
-                        customization.Syrup
-                    );
-
-                if (syrup == null)
-                {
-                    return false;
-                }
-
-                decimal requiredSyrup =
-                    0.015m * quantity;
-
-                if (syrup.Quantity <
-                    requiredSyrup)
-                {
-                    return false;
-                }
-            }
+            return needs != null &&
+                   needs.All(n => n.Ingredient.Quantity >= n.Amount);
         }
 
-        return true;
-    }
-
-
-    // ==========================================
-    // FOOD
-    // ==========================================
-
-    if (product is FoodProduct)
-    {
+        // Food (and anything else) is counted in pieces
         return product.Stock >= quantity;
     }
 
 
     // ==========================================
-    // OTHER PRODUCTS
+    // CONSUME PRODUCT / INGREDIENTS
     // ==========================================
 
-    return product.Stock >= quantity;
-}
+    public bool ConsumeProduct(
+        Product product,
+        int quantity,
+        BeverageCustomization? customization = null)
+    {
+        if (!IsProductAvailable(product, quantity, customization))
+        {
+            return false;
+        }
+
+        // Drinks use up ingredients, never Product.Stock
+        if (product is BeverageProduct)
+        {
+            foreach (var (ingredient, amount) in
+                     RequiredIngredients(product, quantity, customization)!)
+            {
+                ingredient.Quantity -= amount;
+            }
+
+            return true;
+        }
+
+        return product.RemoveStock(quantity);
+    }
+
 
     // ==========================================
     // CHECK A WHOLE ORDER
@@ -180,7 +175,6 @@ public bool IsProductAvailable(
     // Items can share ingredients, so checking each item on
     // its own is not enough. This deducts everything in turn
     // and then restores the stock, so nothing is changed.
-    // ==========================================
 
     public bool CanFulfillOrder(
         List<(Product Product,
@@ -234,6 +228,7 @@ public bool IsProductAvailable(
         return canFulfill;
     }
 
+
     // ==========================================
     // WHAT IS MISSING FOR A DRINK
     // ==========================================
@@ -256,198 +251,4 @@ public bool IsProductAvailable(
             .DistinctBy(i => i.IngredientId)
             .ToList();
     }
-
-    // ==========================================
-    // GET MILK INGREDIENT
-    // ==========================================
-
-    private Ingredient? GetMilkIngredient(
-        string milkName)
-    {
-        if (milkName == "Soy Milk")
-        {
-            return DataStore.GetIngredient("I021");
-        }
-
-        if (milkName == "Almond Milk")
-        {
-            return DataStore.GetIngredient("I019");
-        }
-
-        if (milkName == "Oat Milk")
-        {
-            return DataStore.GetIngredient("I003");
-        }
-
-        if (milkName == "Whole Milk")
-        {
-            return DataStore.GetIngredient("I002");
-        }
-
-        return null;
-    }
-
-
-    // ==========================================
-    // GET SYRUP INGREDIENT
-    // ==========================================
-
-    private Ingredient? GetSyrupIngredient(
-        string syrupName)
-    {
-        if (syrupName == "Caramel")
-        {
-            return DataStore.GetIngredient("I005");
-        }
-
-        if (syrupName == "Vanilla")
-        {
-            return DataStore.GetIngredient("I006");
-        }
-
-        if (syrupName == "Hazelnut")
-        {
-            return DataStore.GetIngredient("I020");
-        }
-
-        return null;
-    }
-
-
-    // ==========================================
-    // CONSUME PRODUCT / INGREDIENTS
-    // ==========================================
-
-public bool ConsumeProduct(
-    Product product,
-    int quantity,
-    BeverageCustomization? customization = null)
-{
-    if (!IsProductAvailable(
-        product,
-        quantity,
-        customization))
-    {
-        return false;
-    }
-
-
-    // ==========================================
-    // BEVERAGE
-    // ==========================================
-    // Deduct ingredients, NOT Product.Stock.
-    // ==========================================
-
-    if (product is BeverageProduct)
-    {
-        Recipe? recipe =
-            RecipeData.Recipes.FirstOrDefault(
-                r => r.Product.ProductId ==
-                     product.ProductId
-            );
-
-        if (recipe == null)
-        {
-            return true;
-        }
-
-        // --------------------------------------
-        // BASE RECIPE INGREDIENTS
-        // --------------------------------------
-
-        foreach (RecipeIngredient recipeIngredient
-                 in recipe.Ingredients)
-        {
-            // Skip Whole Milk when another
-            // milk was selected.
-            if (recipeIngredient.Ingredient.IngredientId == "I002" &&
-                customization != null &&
-                customization.Milk != "Whole Milk")
-            {
-                continue;
-            }
-
-            decimal requiredAmount =
-                recipeIngredient.QuantityRequired *
-                quantity;
-
-            recipeIngredient.Ingredient.Quantity -=
-                requiredAmount;
-        }
-
-
-        // --------------------------------------
-        // CUSTOMIZATION INGREDIENTS
-        // --------------------------------------
-
-        if (customization != null)
-        {
-            // Alternative milk
-            if (customization.Milk != "None")
-            {
-                Ingredient? milk =
-                    GetMilkIngredient(
-                        customization.Milk
-                    );
-
-                if (milk != null)
-                {
-                    milk.Quantity -=
-                        0.2m * quantity;
-                }
-            }
-
-
-            // Extra espresso shots
-            if (customization.ExtraShots > 0)
-            {
-                Ingredient? espresso =
-                    DataStore.GetIngredient("I004");
-
-                if (espresso != null)
-                {
-                    espresso.Quantity -=
-                        0.03m *
-                        customization.ExtraShots *
-                        quantity;
-                }
-            }
-
-
-            // Syrup
-            if (customization.Syrup != "None")
-            {
-                Ingredient? syrup =
-                    GetSyrupIngredient(
-                        customization.Syrup
-                    );
-
-                if (syrup != null)
-                {
-                    syrup.Quantity -=
-                        0.015m * quantity;
-                }
-            }
-        }
-
-        return true;
-    }
-
-
-    // ==========================================
-    // FOOD
-    // ==========================================
-
-    if (product is FoodProduct)
-    {
-        return product.RemoveStock(quantity);
-    }
-
-
-    // ==========================================
-    // OTHER PRODUCTS
-    // ==========================================
-
-    return product.RemoveStock(quantity);
-}
 }

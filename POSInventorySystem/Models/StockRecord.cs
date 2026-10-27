@@ -27,6 +27,11 @@ public class StockRecord
     // Reason for waste / adjustment, or supplier for a delivery
     public string Note { get; private set; }
 
+    public void SetReference(string reference)
+    {
+        Reference = reference;
+    }
+
     public StockRecord(
         DateTime timestamp,
         string itemId,

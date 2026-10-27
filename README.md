@@ -45,13 +45,31 @@ Demo accounts created on first run:
 | Admin | `admin` | `admin123` |
 | Cashier | `cashier` | `cashier123` |
 
+**Before real use:** these demo accounts are created with well-known passwords. Change them (or
+delete the accounts and register new ones) before the system holds real data.
+
+## Tests
+
+```
+dotnet test StarbucksPOS.slnx
+```
+
+- Unit tests cover the stock rules (availability, deduction, shared ingredients), login, password
+  hashing, receipts and whole-pack stock text.
+- Database tests cover what happens when saving goes wrong: a sale that could not be saved is kept
+  and saved later, stock is saved as changes so two terminals do not overwrite each other, duplicate
+  order and product numbers are renumbered, and older databases are upgraded.
+- The database tests create their own throw-away database (never `StarbucksPOS`) and are skipped
+  automatically on a machine without SQL Server LocalDB.
+- A GitHub Actions workflow (`.github/workflows/build.yml`) builds and tests on every push.
+
 ## Project layout
 
 | Folder | Contents |
 |---|---|
 | `Models/` | Product, Ingredient, Transaction, CartItem, StockRecord, payments |
-| `Data/` | `Database.cs` (all SQL, table creation, loading and saving), seed data, recipes |
-| `Services/` | Login, admin actions, inventory rules, password hashing |
+| `Data/` | `Database.cs` (loading and saving), `Schema.cs` (numbered migrations), seed data, recipes |
+| `Services/` | Login, admin actions, inventory rules, drink option rules, password hashing |
 | `UI/` | Windows Forms screens and dialogs (built in code) |
 | `Assets/Fonts/` | Source Sans 3 (SIL Open Font License) |
 

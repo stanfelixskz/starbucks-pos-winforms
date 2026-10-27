@@ -8,7 +8,9 @@ public class LoginService
     public bool UserExists(string username)
     {
         return DataStore.Users.Any(
-            user => user.Username == username
+            user => user.Username.Equals(
+                username,
+                StringComparison.OrdinalIgnoreCase)
         );
     }
 
@@ -85,7 +87,9 @@ public class LoginService
         fullName = "";
 
         User? user = DataStore.Users.FirstOrDefault(
-            u => u.Username == username
+            u => u.Username.Equals(
+                username,
+                StringComparison.OrdinalIgnoreCase)
         );
 
         if (user == null)

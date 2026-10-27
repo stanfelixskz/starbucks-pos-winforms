@@ -608,7 +608,8 @@ public class CashierForm : Form, ILogoutForm
                 "database:" + Environment.NewLine +
                 ex.Message + Environment.NewLine +
                 Environment.NewLine +
-                "It will be saved with the next sale or restock.",
+                "It is kept and will be saved automatically with the next " +
+                "sale or restock.",
                 "Database",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -624,6 +625,43 @@ public class CashierForm : Form, ILogoutForm
 
         RefreshProducts();
         RefreshCart();
+    }
+
+    // ==============================
+    // CLOSING
+    // ==============================
+
+    // Sales that could not be saved are tried once more when the window
+    // closes. If they still fail, the cashier decides whether to leave.
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (Database.PendingSaleCount > 0)
+        {
+            try
+            {
+                Database.SaveInventory();
+            }
+            catch (Exception)
+            {
+                // still not reachable; ask below
+            }
+
+            if (Database.PendingSaleCount > 0 &&
+                MessageBox.Show(
+                    $"{Database.PendingSaleCount} sale(s) are not saved to the " +
+                    "database yet. If you close now they will be lost.\n\n" +
+                    "Close anyway?",
+                    "Unsaved sales",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                e.Cancel = true;
+                LoggedOut = false;
+                return;
+            }
+        }
+
+        base.OnFormClosing(e);
     }
 
     // ==============================

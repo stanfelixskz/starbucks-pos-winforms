@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="POSInventorySystem/POSInventorySystem.csproj" />
+  <Project Path="POSInventorySystem.Tests/POSInventorySystem.Tests.csproj" />
+</Solution>

@@ -1,4 +1,5 @@
 using POSInventorySystem.Data;
+using POSInventorySystem.Services;
 using POSInventorySystem.UI;
 
 namespace POSInventorySystem;
@@ -32,6 +33,22 @@ internal static class Program
 
         // Initialize product recipes
         RecipeData.Initialize();
+
+        // The drink options (milk, shots, syrup) point at ingredient IDs.
+        // Say so now if one is missing, instead of failing at the till.
+        List<string> missing = CustomizationRules.FindMissingIngredients();
+
+        if (missing.Count > 0)
+        {
+            MessageBox.Show(
+                "These ingredients used by drink options are missing from " +
+                "the database, so those options will show as unavailable:" +
+                Environment.NewLine + Environment.NewLine +
+                string.Join(", ", missing),
+                "Starbucks POS",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
 
         // Sign in, work, log out - repeat until the window is closed
         // or sign-in is cancelled.

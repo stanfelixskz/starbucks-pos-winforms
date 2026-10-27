@@ -64,6 +64,13 @@ public class Transaction
         return transaction;
     }
 
+    // Used when two terminals picked the same number: the order is
+    // renumbered before it is saved
+    public void AssignId(string transactionId)
+    {
+        TransactionId = transactionId;
+    }
+
     // Continue numbering after the orders already saved
     public static void SetNextNumber(int number)
     {

@@ -59,22 +59,47 @@ public class AdminService
         }
 
         string id = NextProductId();
+        Product? product = null;
 
-        Product product = isBeverage
-            ? new BeverageProduct(
-                id, name.Trim(), price, stock, "Beverage")
-            : new FoodProduct(
-                id, name.Trim(), price, stock, "Food");
-
-        product.SetLowStockLevel(lowStockLevel);
-
-        try
+        // If another terminal took this number first, the database tells us
+        // the next free one and we try again
+        for (int attempt = 0; attempt < 5 && product == null; attempt++)
         {
-            Database.AddProduct(product);
+            Product candidate = isBeverage
+                ? new BeverageProduct(
+                    id, name.Trim(), price, stock, "Beverage")
+                : new FoodProduct(
+                    id, name.Trim(), price, stock, "Food");
+
+            candidate.SetLowStockLevel(lowStockLevel);
+
+            try
+            {
+                Database.AddProduct(candidate);
+                product = candidate;
+            }
+            catch (Exception ex) when (Database.IsDuplicateKey(ex))
+            {
+                try
+                {
+                    id = Database.NextProductIdFromDatabase();
+                }
+                catch (Exception inner)
+                {
+                    error = $"Could not save the product: {inner.Message}";
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                error = $"Could not save the product: {ex.Message}";
+                return false;
+            }
         }
-        catch (Exception ex)
+
+        if (product == null)
         {
-            error = $"Could not save the product: {ex.Message}";
+            error = "Could not find a free product number.";
             return false;
         }
 
@@ -232,22 +257,47 @@ public class AdminService
             return false;
         }
 
-        Ingredient ingredient = new Ingredient(
-            NextIngredientId(),
-            name.Trim(),
-            Math.Max(0, startingPacks),
-            lowAt,
-            unit,
-            packSize,
-            par);
+        string id = NextIngredientId();
+        Ingredient? ingredient = null;
 
-        try
+        for (int attempt = 0; attempt < 5 && ingredient == null; attempt++)
         {
-            Database.AddIngredient(ingredient);
+            Ingredient candidate = new Ingredient(
+                id,
+                name.Trim(),
+                Math.Max(0, startingPacks),
+                lowAt,
+                unit,
+                packSize,
+                par);
+
+            try
+            {
+                Database.AddIngredient(candidate);
+                ingredient = candidate;
+            }
+            catch (Exception ex) when (Database.IsDuplicateKey(ex))
+            {
+                try
+                {
+                    id = Database.NextIngredientIdFromDatabase();
+                }
+                catch (Exception inner)
+                {
+                    error = $"Could not save the ingredient: {inner.Message}";
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                error = $"Could not save the ingredient: {ex.Message}";
+                return false;
+            }
         }
-        catch (Exception ex)
+
+        if (ingredient == null)
         {
-            error = $"Could not save the ingredient: {ex.Message}";
+            error = "Could not find a free ingredient number.";
             return false;
         }
 

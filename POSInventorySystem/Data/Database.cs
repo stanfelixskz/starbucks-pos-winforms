@@ -38,7 +38,8 @@ public static class Database
 
         using SqlConnection connection = Open(DatabaseName);
 
-        CreateTables(connection);
+        Schema.Apply(connection);
+        BackfillIngredientUnits(connection);
         SeedIfEmpty(connection);
         LoadAll(connection);
     }
@@ -53,111 +54,10 @@ public static class Database
             $"CREATE DATABASE [{DatabaseName}];");
     }
 
-    private static void CreateTables(SqlConnection connection)
+    // Older ingredients get their unit, pack size and par level from the
+    // starting data (only rows that don't have a unit yet)
+    private static void BackfillIngredientUnits(SqlConnection connection)
     {
-        Run(connection, null, @"
-IF OBJECT_ID(N'dbo.Users', N'U') IS NULL
-CREATE TABLE dbo.Users (
-    Username      NVARCHAR(50)  NOT NULL PRIMARY KEY,
-    PasswordHash  NVARCHAR(200) NOT NULL,
-    FullName      NVARCHAR(100) NOT NULL,
-    Role          NVARCHAR(20)  NOT NULL
-);
-
-IF OBJECT_ID(N'dbo.Products', N'U') IS NULL
-CREATE TABLE dbo.Products (
-    ProductId  NVARCHAR(10)  NOT NULL PRIMARY KEY,
-    Name       NVARCHAR(100) NOT NULL,
-    Price      DECIMAL(10,2) NOT NULL,
-    Stock      INT           NOT NULL,
-    Category   NVARCHAR(20)  NOT NULL,
-    LowStockLevel INT        NOT NULL DEFAULT 5,
-    Unavailable BIT          NOT NULL DEFAULT 0
-);
-
-IF OBJECT_ID(N'dbo.Ingredients', N'U') IS NULL
-CREATE TABLE dbo.Ingredients (
-    IngredientId       NVARCHAR(10)  NOT NULL PRIMARY KEY,
-    Name               NVARCHAR(100) NOT NULL,
-    Quantity           DECIMAL(12,4) NOT NULL,
-    LowStockThreshold  DECIMAL(12,4) NOT NULL,
-    Unit               NVARCHAR(10)  NOT NULL DEFAULT N'',
-    PackSize           DECIMAL(12,4) NOT NULL DEFAULT 1,
-    ParLevel           DECIMAL(12,4) NOT NULL DEFAULT 0
-);
-
-IF OBJECT_ID(N'dbo.Transactions', N'U') IS NULL
-CREATE TABLE dbo.Transactions (
-    TransactionId  NVARCHAR(10)  NOT NULL PRIMARY KEY,
-    OrderedAt      DATETIME2     NOT NULL,
-    CompletedAt    DATETIME2     NULL,
-    CashierName    NVARCHAR(100) NOT NULL,
-    Total          DECIMAL(10,2) NOT NULL,
-    CashReceived   DECIMAL(10,2) NULL
-);
-
-IF OBJECT_ID(N'dbo.TransactionItems', N'U') IS NULL
-CREATE TABLE dbo.TransactionItems (
-    Id             INT IDENTITY(1,1) PRIMARY KEY,
-    TransactionId  NVARCHAR(10)  NOT NULL
-        REFERENCES dbo.Transactions(TransactionId),
-    ProductId      NVARCHAR(10)  NOT NULL
-        REFERENCES dbo.Products(ProductId),
-    Quantity       INT           NOT NULL,
-    UnitPrice      DECIMAL(10,2) NOT NULL,
-    Size           NVARCHAR(20)  NULL,
-    Serving        NVARCHAR(20)  NULL,
-    Milk           NVARCHAR(30)  NULL,
-    ExtraShots     INT           NULL,
-    Syrup          NVARCHAR(30)  NULL
-);
-
-IF OBJECT_ID(N'dbo.StockRecords', N'U') IS NULL
-CREATE TABLE dbo.StockRecords (
-    Id           INT IDENTITY(1,1) PRIMARY KEY,
-    [Timestamp]  DATETIME2      NOT NULL,
-    ItemId       NVARCHAR(10)   NOT NULL,
-    ItemName     NVARCHAR(100)  NOT NULL,
-    Type         NVARCHAR(20)   NOT NULL,
-    Unit         NVARCHAR(10)   NOT NULL,
-    [Count]      DECIMAL(12,4)  NOT NULL,
-    StockChange  DECIMAL(12,4)  NOT NULL,
-    Reference    NVARCHAR(50)   NOT NULL,
-    Note         NVARCHAR(200)  NOT NULL DEFAULT N''
-);
-
--- Existing databases from before the Note column
-IF COL_LENGTH(N'dbo.StockRecords', N'Note') IS NULL
-ALTER TABLE dbo.StockRecords ADD Note NVARCHAR(200) NOT NULL DEFAULT N'';
-
--- Databases from before units, pack sizes and low-stock levels
-IF COL_LENGTH(N'dbo.Ingredients', N'Unit') IS NULL
-ALTER TABLE dbo.Ingredients ADD
-    Unit NVARCHAR(10) NOT NULL DEFAULT N'',
-    PackSize DECIMAL(12,4) NOT NULL DEFAULT 1,
-    ParLevel DECIMAL(12,4) NOT NULL DEFAULT 0;
-
-IF COL_LENGTH(N'dbo.Products', N'LowStockLevel') IS NULL
-ALTER TABLE dbo.Products ADD LowStockLevel INT NOT NULL DEFAULT 5;
-
-IF COL_LENGTH(N'dbo.Products', N'Unavailable') IS NULL
-ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
-
-        // Reorder and par levels are whole packs (par can not sit below the
-        // reorder point)
-        Run(connection, null,
-            "UPDATE dbo.Ingredients SET " +
-            "LowStockThreshold = CEILING(LowStockThreshold), " +
-            "ParLevel = CEILING(ParLevel) " +
-            "WHERE LowStockThreshold <> CEILING(LowStockThreshold) " +
-            "OR ParLevel <> CEILING(ParLevel)");
-
-        Run(connection, null,
-            "UPDATE dbo.Ingredients SET ParLevel = LowStockThreshold " +
-            "WHERE ParLevel < LowStockThreshold");
-
-        // Older ingredients get their unit, pack size and par level from the
-        // starting data (only rows that don't have a unit yet)
         foreach (Ingredient i in DataStore.Ingredients)
         {
             Run(connection, null,
@@ -283,6 +183,7 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
         }
 
         savedStockRecords = DataStore.StockRecords.Count;
+        RememberSavedStock();
     }
 
     private static void LoadTransactions(SqlConnection connection)
@@ -360,8 +261,124 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
     // SAVING
     // ==========================================
 
-    // Saves a completed sale together with the stock it used.
+    // Sales that finished at the till but are not in the database yet
+    // (for example the database could not be reached). They are retried on
+    // the next save and when the cashier window closes, and never dropped.
+    private static readonly List<Transaction> pendingSales = new();
+
+    public static int PendingSaleCount => pendingSales.Count;
+
+    // The stock last saved for each item. Only items that differ are
+    // written, and as an addition, so a change made by another terminal is
+    // not overwritten.
+    private static readonly Dictionary<string, decimal> savedIngredientStock = new();
+    private static readonly Dictionary<string, int> savedProductStock = new();
+
+    private static void RememberSavedStock()
+    {
+        savedIngredientStock.Clear();
+
+        foreach (Ingredient i in DataStore.Ingredients)
+        {
+            savedIngredientStock[i.IngredientId] = i.Quantity;
+        }
+
+        savedProductStock.Clear();
+
+        foreach (Product p in DataStore.Products)
+        {
+            savedProductStock[p.ProductId] = p.Stock;
+        }
+    }
+
+    // Saves a completed sale together with the stock it used. If the
+    // database can not be reached this throws, but the sale stays queued
+    // and the next successful save writes it.
     public static void SaveSale(Transaction sale)
+    {
+        if (!pendingSales.Contains(sale))
+        {
+            pendingSales.Add(sale);
+        }
+
+        SaveInventory();
+    }
+
+    // Saves every queued sale. A sale leaves the queue only after its
+    // database transaction has committed.
+    public static void FlushPendingSales()
+    {
+        foreach (Transaction sale in pendingSales.ToList())
+        {
+            InsertSale(sale);
+            pendingSales.Remove(sale);
+        }
+    }
+
+    // Saves queued sales, then the stock changes and any new stock records.
+    // Used after a sale or a restock. If a save fails, the same changes are
+    // sent again by the next one.
+    public static void SaveInventory()
+    {
+        FlushPendingSales();
+
+        using SqlConnection connection = Open(DatabaseName);
+        using SqlTransaction transaction = connection.BeginTransaction();
+
+        int records = SyncInventory(connection, transaction);
+
+        transaction.Commit();
+        savedStockRecords = records;
+        RememberSavedStock();
+    }
+
+    // Saves one sale. If another terminal already used its order number,
+    // the sale is given the next free number first.
+    private static void InsertSale(Transaction sale)
+    {
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                InsertSaleOnce(sale);
+                return;
+            }
+            catch (SqlException ex) when (IsDuplicateKey(ex))
+            {
+                using SqlConnection connection = Open(DatabaseName);
+
+                // The very same sale is already there (the answer to an
+                // earlier attempt was lost): nothing more to do
+                if (SaleAlreadySaved(connection, sale))
+                {
+                    return;
+                }
+
+                // Someone else owns this number: take the next free one
+                string oldId = sale.TransactionId;
+                int next = NextTransactionNumber(connection);
+
+                sale.AssignId($"T{next:D2}");
+                Transaction.SetNextNumber(next + 1);
+
+                // Its stock records are not saved yet; keep them pointing
+                // at the new number
+                foreach (StockRecord record in DataStore.StockRecords
+                             .Skip(savedStockRecords))
+                {
+                    if (record.Type == "SALE" && record.Reference == oldId)
+                    {
+                        record.SetReference(sale.TransactionId);
+                    }
+                }
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Could not find a free order number for the sale.");
+    }
+
+    private static void InsertSaleOnce(Transaction sale)
     {
         using SqlConnection connection = Open(DatabaseName);
         using SqlTransaction transaction = connection.BeginTransaction();
@@ -399,46 +416,106 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
                 ("@syrup", c?.Syrup));
         }
 
-        int records = SyncInventory(connection, transaction);
-
         transaction.Commit();
-        savedStockRecords = records;
     }
 
-    // Saves current ingredient / product stock and any new stock records.
-    // Used after a sale or a restock. Writes every row, so a failed
-    // save is repaired by the next successful one.
-    public static void SaveInventory()
+    private static bool SaleAlreadySaved(SqlConnection connection, Transaction sale)
+    {
+        using SqlCommand command = new SqlCommand(
+            "SELECT COUNT(*) FROM dbo.Transactions " +
+            "WHERE TransactionId = @id AND OrderedAt = @ordered " +
+            "AND CashierName = @cashier AND Total = @total",
+            connection);
+
+        command.Parameters.AddWithValue("@id", sale.TransactionId);
+        command.Parameters.AddWithValue("@ordered", sale.Date);
+        command.Parameters.AddWithValue("@cashier", sale.CashierName);
+        command.Parameters.AddWithValue("@total", sale.Total);
+
+        return (int)command.ExecuteScalar()! > 0;
+    }
+
+    // The next free order number according to the database
+    private static int NextTransactionNumber(SqlConnection connection)
+    {
+        using SqlCommand command = new SqlCommand(
+            "SELECT ISNULL(MAX(CAST(SUBSTRING(TransactionId, 2, 9) AS INT)), 0) + 1 " +
+            "FROM dbo.Transactions " +
+            "WHERE ISNUMERIC(SUBSTRING(TransactionId, 2, 9)) = 1",
+            connection);
+
+        return (int)command.ExecuteScalar()!;
+    }
+
+    // The next free product number according to the database
+    public static string NextProductIdFromDatabase()
     {
         using SqlConnection connection = Open(DatabaseName);
-        using SqlTransaction transaction = connection.BeginTransaction();
 
-        int records = SyncInventory(connection, transaction);
+        using SqlCommand command = new SqlCommand(
+            "SELECT ISNULL(MAX(CAST(SUBSTRING(ProductId, 2, 9) AS INT)), 0) + 1 " +
+            "FROM dbo.Products WHERE ISNUMERIC(SUBSTRING(ProductId, 2, 9)) = 1",
+            connection);
 
-        transaction.Commit();
-        savedStockRecords = records;
+        return $"P{(int)command.ExecuteScalar()!:D2}";
     }
 
-    // Returns how many stock records exist once this save commits
+    // The next free ingredient number according to the database
+    public static string NextIngredientIdFromDatabase()
+    {
+        using SqlConnection connection = Open(DatabaseName);
+
+        using SqlCommand command = new SqlCommand(
+            "SELECT ISNULL(MAX(CAST(SUBSTRING(IngredientId, 2, 9) AS INT)), 0) + 1 " +
+            "FROM dbo.Ingredients WHERE ISNUMERIC(SUBSTRING(IngredientId, 2, 9)) = 1",
+            connection);
+
+        return $"I{(int)command.ExecuteScalar()!:D3}";
+    }
+
+    // 2627 and 2601: a row with that key already exists
+    public static bool IsDuplicateKey(Exception ex) =>
+        ex is SqlException { Number: 2627 or 2601 };
+
+    // Returns how many stock records exist once this save commits.
+    // Only items whose stock changed since the last save are written, and
+    // each is written as an addition to what the database holds.
     private static int SyncInventory(
         SqlConnection connection,
         SqlTransaction transaction)
     {
         foreach (Ingredient i in DataStore.Ingredients)
         {
+            decimal change = i.Quantity -
+                savedIngredientStock.GetValueOrDefault(
+                    i.IngredientId, i.Quantity);
+
+            if (change == 0)
+            {
+                continue;
+            }
+
             Run(connection, transaction,
-                "UPDATE dbo.Ingredients SET Quantity = @qty " +
+                "UPDATE dbo.Ingredients SET Quantity = Quantity + @change " +
                 "WHERE IngredientId = @id",
-                ("@qty", i.Quantity),
+                ("@change", change),
                 ("@id", i.IngredientId));
         }
 
         foreach (Product p in DataStore.Products)
         {
+            int change = p.Stock -
+                savedProductStock.GetValueOrDefault(p.ProductId, p.Stock);
+
+            if (change == 0)
+            {
+                continue;
+            }
+
             Run(connection, transaction,
-                "UPDATE dbo.Products SET Stock = @stock " +
+                "UPDATE dbo.Products SET Stock = Stock + @change " +
                 "WHERE ProductId = @id",
-                ("@stock", p.Stock),
+                ("@change", change),
                 ("@id", p.ProductId));
         }
 
@@ -544,6 +621,8 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
             ("@stock", p.Stock),
             ("@cat", p.Category),
             ("@low", p.LowStockLevel));
+
+        savedProductStock[p.ProductId] = p.Stock;
     }
 
     private static void InsertIngredient(
@@ -563,6 +642,8 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
             ("@unit", i.Unit),
             ("@size", i.PackSize),
             ("@par", i.ParLevel));
+
+        savedIngredientStock[i.IngredientId] = i.Quantity;
     }
 
     // ==========================================
@@ -586,7 +667,7 @@ ALTER TABLE dbo.Products ADD Unavailable BIT NOT NULL DEFAULT 0;");
         return command.ExecuteReader();
     }
 
-    private static void Run(
+    internal static void Run(
         SqlConnection connection,
         SqlTransaction? transaction,
         string sql,
