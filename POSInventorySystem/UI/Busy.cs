@@ -45,6 +45,8 @@ public static class Busy
 
     private sealed class SavingBox : Form
     {
+        private bool saveFinished;
+
         public SavingBox(string text, Task task)
         {
             FormBorderStyle = FormBorderStyle.None;
@@ -69,17 +71,27 @@ public static class Busy
                 }
                 catch (Exception)
                 {
-                    // the caller sees the exception; this box only closes
+                    // The caller sees the exception; this box only closes.
                 }
-
-                Close();
+                finally
+                {
+                    // Allow the dialog to close after the save task finishes,
+                    // whether the save succeeds or fails.
+                    saveFinished = true;
+                    Close();
+                }
             };
         }
 
-        // Alt+F4 must not close the box while the save is running
+        // Prevent user-initiated closing while saving, but allow the dialog
+        // to close itself when the task has finished.
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            e.Cancel = e.CloseReason == CloseReason.UserClosing;
+            if (!saveFinished && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+            }
+
             base.OnFormClosing(e);
         }
     }
